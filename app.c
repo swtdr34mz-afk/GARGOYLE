@@ -299,6 +299,7 @@ static struct {
     char msg[2][24];
     uint32_t msg_until;
     uint32_t rec_t, seq_t;               /* REC / SEQ gedrückt seit (0: nicht, oder schon gehandelt) */
+    uint8_t seq_stage;                   /* SEQ gehalten: 1 der Klang ist INIT, 2 alles */
     uint32_t dice_at;
     uint32_t trans_at;                   /* ein Raumwechsel: der Blick wird kurz dunkel */
     uint32_t wrath_until;                /* WRATH wurde gedreht: die Anzeige */
@@ -582,6 +583,27 @@ static void dice(int deep)
     app_say(deep ? "DEEP FATE" : "FATE", "THE DICE ARE CAST");
 }
 
+/* alles auf INIT: alle 16 Algorithmen, SPELL, die vier OMEN, WRATH, die Regler des GROOVE, FREEZE; die Snapshots bleiben */
+static void full_init(void)
+{
+    uint32_t f;
+    int a;
+    for (a = 0; a < FK_NALGO; a++)
+        algo_defaults(a);
+    memcpy(set.g, FK_GLOBAL_INIT, FK_NPG);
+    set.wrath = 0;
+    for (a = 0; a < GR_NP; a++)
+        set.grv.p[a] = GR_INIT[a];
+    f = plat_lock();
+    fk_freeze(0);
+    plat_unlock(f);
+    push_params();
+    push_groove();
+    dirty();
+    ui.redraw |= R_ALL;
+    app_say("ALL INIT", "SNAPSHOTS KEPT");
+}
+
 static void factory(void)
 {
     algo_defaults(set.algo);
@@ -753,13 +775,18 @@ static void held_buttons(uint32_t btn)
             ui.rec_t = 0;
         }
     }
-    if (ui.seq_t) {
+    if (ui.seq_t) {                      /* SEQ: 1 s der Klang auf INIT, weiter halten bis 3 s: alles auf INIT */
         if (!(btn >> B_SEQ & 1u)) {
-            app_say("SEQ", "HOLD 1 S: INIT");
+            if (!ui.seq_stage)
+                app_say("SEQ", "1 S: SOUND  3 S: ALL INIT");
             ui.seq_t = 0;
-        } else if (now - ui.seq_t >= 1000u) {
+            ui.seq_stage = 0;
+        } else if (ui.seq_stage == 0 && now - ui.seq_t >= 1000u) {
             factory();
-            ui.seq_t = 0;
+            ui.seq_stage = 1;
+        } else if (ui.seq_stage == 1 && now - ui.seq_t >= 3000u) {
+            full_init();
+            ui.seq_stage = 2;
         }
     }
 }
