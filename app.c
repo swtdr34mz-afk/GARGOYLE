@@ -15,9 +15,9 @@
  *   LFO        SPELL:  AGE, AURA (der Resonator: aus Chip-Tönen wird eine Fläche), SPEED, WIDTH (für alle gleich)
  *   SELECT     WRATH: ein Makro über allem, für live, 4 je Raste
  *   PRESET     der Algorithmus (16, in zwei Bänken)
- *   ALGORITHM  QUEST (grob, für live); auf den GROOVE-Seiten: der Style
+ *   ALGORITHM  QUEST = MORPH in den nächsten Algorithmus; auf den GROOVE-Seiten: der Style
  *   PLAY       HOLD: der Drone bleibt stehen, die Tasten ändern nur noch den Grundton
- *   REC        FATE: würfeln (FATE und QUEST neu; 1 s: dazu RUNE und ALCHEMY); auf den GROOVE-Seiten: GROOVE an / aus
+ *   REC        FATE: würfeln (FATE neu, damit auch die Varianten; 1 s: dazu RUNE und ALCHEMY); auf den GROOVE-Seiten: GROOVE an / aus
  *   ARP        FREEZE: das Echo hält, was es hat
  *   SEQ        1 s halten: der Algorithmus zurück auf seinen Werksklang
  *   GLO        VOL: die Pegel im Bild
@@ -38,7 +38,8 @@ static float mem_df[FK_DF_N] __attribute__((section(".pool")));
 static float mem_res[FK_NRES][FK_RS_N] __attribute__((section(".pool")));
 
 /* ------------------------------------------------------------- Speicher --- */
-#define SET_MAGIC 0x34475247u            /* "GRG4": mit AURA */
+#define SET_MAGIC 0x35475247u            /* "GRG5": QUEST ist der MORPH */
+#define SET_MAGIC4 0x34475247u           /* "GRG4" (v0.1.0): wird übernommen, QUEST auf 0 */
 #define NSNAP 8
 typedef struct {
     uint8_t used, algo, oct, rsv;
@@ -77,6 +78,13 @@ static void settings_defaults(void)
 static void settings_load(void)
 {
     int a, i, got = plat_store_load(OBJ_SETTINGS, &set, sizeof set), ok;
+    if (got == (int)sizeof set && set.magic == SET_MAGIC4) {   /* v0.1.0: QUEST war die Variante, jetzt der MORPH */
+        set.magic = SET_MAGIC;
+        for (a = 0; a < FK_NALGO; a++)
+            set.p[a][P_QUEST] = 0;
+        for (i = 0; i < NSNAP; i++)
+            set.snaps[i].p[P_QUEST] = 0;
+    }
     ok = got == (int)sizeof set && set.magic == SET_MAGIC && set.algo < FK_NALGO && set.oct <= 4u && set.hold <= 1u
          && set.snap <= NSNAP && set.grv.on <= 1u && set.grv.style < GR_NSTYLES && set.wrath <= 127u;
     for (i = 0; ok && i < NSNAP; i++)
@@ -134,9 +142,14 @@ static void push_params(void)
 {
     uint8_t o[FK_NP];
     uint32_t f;
+    uint8_t nx[FK_NP];
     all_params(o);
+    memcpy(nx, set.p[(set.algo + 1u) % FK_NALGO], FK_NPA);   /* MORPH: der nächste Algorithmus mit seinen Reglern */
+    memcpy(nx + FK_NPA, set.g, FK_NPG);
+    wrath(set.wrath, nx);
     f = plat_lock();
     fk_params(o);
+    fk_morph(nx + P_CURSE);
     plat_unlock(f);
 }
 static void push_groove(void)
@@ -463,7 +476,7 @@ static void snap_load(int s)
     app_say(t, FK_ALGOS[set.algo].name);
 }
 
-/* FATE: würfeln – FATE und QUEST neu (deep: dazu RUNE und ALCHEMY); der Zufall aus der Zeit */
+/* FATE: würfeln – FATE neu (und damit Tabellen, Verstimmung und die Variante) (deep: dazu RUNE und ALCHEMY); der Zufall aus der Zeit */
 static void dice(int deep)
 {
     static uint32_t r = 0x6A09E667u;
@@ -472,7 +485,6 @@ static void dice(int deep)
     r ^= r >> 17;
     r ^= r << 5;
     set.p[set.algo][P_FATE] = (uint8_t)(r % 128u);
-    set.p[set.algo][P_QUEST] = (uint8_t)((r >> 8) % 128u);
     if (deep) {
         set.p[set.algo][P_RUNE] = (uint8_t)((r >> 15) % 128u);
         set.p[set.algo][P_ALCHEMY] = (uint8_t)((r >> 23) % 128u);
@@ -693,15 +705,21 @@ static void input(void)
     if ((e = plat_enc(EN_ALGO)) != 0) {
         if (groove_page()) {                     /* auf den GROOVE-Seiten: der Style */
             style_turn(e);
-        } else {                                 /* QUEST: grob, für live */
-            int v = iclamp((int)set.p[set.algo][P_QUEST] + coarse(EN_ALGO, e), 0, 127);
+        } else {                                 /* QUEST = MORPH in den nächsten Algorithmus */
+            int v = iclamp((int)set.p[set.algo][P_QUEST] + (int)accel(EN_ALGO, e, 1, 4), 0, 127);
             if (v != set.p[set.algo][P_QUEST]) {
-                char t[8] = "";
+                char t[32] = "";
                 set.p[set.algo][P_QUEST] = (uint8_t)v;
                 push_params();
                 dirty();
-                int_text(v, t);
-                app_say("QUEST", t);
+                if (!v) {
+                    text_cat(t, "OFF");
+                } else {
+                    int_text((v * 100 + 63) / 127, t);
+                    text_cat(t, "% > ");
+                    text_cat(t, FK_ALGOS[(set.algo + 1u) % FK_NALGO].name);
+                }
+                app_say("QUEST MORPH", t);
             }
         }
     }

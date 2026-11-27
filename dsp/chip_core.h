@@ -66,6 +66,7 @@ typedef struct {
 void fk_init(const fk_mem *m);
 void fk_algo(int a);
 void fk_params(const uint8_t p[FK_NP]);
+void fk_morph(const uint8_t p4[4]);      /* QUEST = MORPH: CURSE, HORDE, RUNE, ALCHEMY des nächsten Algorithmus */
 void fk_note_on(int note, int vel);
 void fk_note_off(int note);
 void fk_hold(int on);

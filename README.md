@@ -27,7 +27,7 @@ One knob, one parameter (like FIKH-S), six pages:
 | LFO | SPELL | AGE (sample rate down to 2 kHz) | AURA (a resonator: chip tones ring into a drone) | SPEED (arpeggios, patterns) | WIDTH |
 
 SELECT is **WRATH**, one macro over everything for live play (past half the dragon appears). PRESET picks the
-algorithm, ALGORITHM is QUEST (its variants, coarse), REC is FATE (dice; held 1 s: deep). PLAY: HOLD, ARP: FREEZE (the
+algorithm, ALGORITHM is QUEST, a MORPH into the next algorithm, REC is FATE (dice, also the variants; held 1 s: deep). PLAY: HOLD, ARP: FREEZE (the
 echo holds), SEQ held: factory sound, GLO: levels, SAVE + key / SEL + key: 8 snapshots. MIDI: notes, pitch bend,
 CC 1 RUNE, CC 70–73 CURSE HORDE RUNE ALCHEMY, CC 75 WRATH, clock / start / stop for the GROOVE.
 

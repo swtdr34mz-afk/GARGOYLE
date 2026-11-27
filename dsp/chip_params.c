@@ -17,21 +17,21 @@ const uint8_t FK_GLOBAL_INIT[FK_NPG] = {10, 64, 50, 96};
 /*                                                CURSE HORDE RUNE ALCH  ECHO HAUNT DECAY DEPTH  TORCH PORTAL AWAKEN SLUMB  CREEP WANDER BITS VOL  FATE QUEST */
 const fk_algo_info FK_ALGOS[FK_NALGO] = {
     {"TORCHLIGHT", "NES PULSE PAIR", "DUTY SWEEP", {64, 74, 40, 30, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 3, 0}},
-    {"CRYPT CHOIR", "GAME BOY", "PULSE / WAVE", {64, 80, 40, 70, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 40, 96, 11, 20}},
-    {"GOBLIN CHORDS", "C64 ARPEGGIO", "OCTAVES", {64, 70, 20, 40, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 7, 0}},
+    {"CRYPT CHOIR", "GAME BOY", "PULSE / WAVE", {64, 80, 40, 70, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 40, 96, 9, 0}},
+    {"GOBLIN CHORDS", "C64 ARPEGGIO", "OCTAVES", {64, 70, 20, 40, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 8, 0}},
     {"DRAGON BREATH", "NES NOISE", "NOISE / PULSE", {64, 72, 40, 70, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 92, 19, 0}},
     {"PC SPEAKER", "1-BIT BEEPER", "REALSOUND", {74, 70, 60, 0, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 50, 90, 5, 0}},
     {"POKEY CURSE", "ATARI POLYS", "2ND CHANNEL", {64, 72, 40, 40, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 56, 90, 13, 0}},
     {"SID RITUAL", "C64 RING / SYNC", "RATIO", {40, 72, 50, 30, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 23, 0}},
     {"ADLIB HALL", "OPL FM", "MULTIPLE", {50, 72, 40, 30, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 54, 96, 29, 0}},
     {"BEHOLDER", "TRACKER VIBRATO", "VIBRATO", {64, 76, 40, 50, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 31, 0}},
-    {"TREASURE", "FM BELLS", "BELL RATIO", {64, 70, 50, 40, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 56, 96, 37, 30}},
+    {"TREASURE", "FM BELLS", "BELL RATIO", {64, 70, 50, 40, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 56, 96, 33, 0}},
     {"SKELETON MARCH", "TRIANGLE + TICKS", "DENSITY", {64, 70, 30, 50, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 41, 0}},
     {"MAGE TOWER", "WAVE MORPH", "DRIFT SPEED", {70, 74, 40, 30, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 58, 96, 43, 0}},
     {"THRONE OF BONES", "OCTAVE ARPEGGIO", "OCTAVES", {64, 70, 50, 30, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 47, 0}},
     {"PIT OF DOOM", "DIVIDER LOGIC", "DEPTH", {64, 70, 40, 40, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 64, 92, 53, 0}},
     {"WIND OF ABYSS", "FILTERED NOISE", "STORM SPEED", {40, 74, 40, 30, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 56, 96, 59, 0}},
-    {"SPELLBOOK", "RANDOM NOTES", "LEAPS", {70, 70, 30, 40, 64, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 61, 0}},
+    {"SPELLBOOK", "RANDOM NOTES", "LEAPS", {70, 70, 30, 40, 64, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 57, 0}},
 };
 
 static void vt_cat(char *d, const char *s)
@@ -134,8 +134,12 @@ const char *fk_value_text(int p, int v, char *t)
         vt_int(t, v - 64);
         break;
     default:
+        if (p == P_QUEST && !v) {
+            vt_cat(t, "OFF");
+            break;
+        }
         vt_int(t, (v * 100 + 63) / 127);
-        if (p != P_FATE && p != P_QUEST)
+        if (p != P_FATE)
             vt_cat(t, "%");
         break;
     }

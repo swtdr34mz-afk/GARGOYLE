@@ -83,10 +83,13 @@ wait 300
 shot wrath.png
 turn SELECT -40 60
 expect wrath 0
-# QUEST on ALGORITHM, coarse
+# QUEST = MORPH on ALGORITHM, fine
 turn ALGO 2 120
 wait 100
-expect scan 5
+expect scan 2
+turn ALGO -2 120
+wait 100
+expect scan 0
 # FATE (REC)
 tap REC
 wait 100
