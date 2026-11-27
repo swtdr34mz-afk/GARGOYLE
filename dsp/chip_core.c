@@ -115,8 +115,9 @@ static struct {
     uint8_t wt[4][32];                        /* die Tabellen (FATE würfelt sie) */
     uint8_t mraw[4];                          /* MORPH: CURSE, HORDE, RUNE, ALCHEMY des nächsten Algorithmus */
     float om_ph, om_v, om_sh, om_out;         /* OMEN: Phase, Wert, CHANCE gehalten, Ausgang (mal POWER) */
-    float om_vol0, om_pan0;                   /* Lautstärke und Pan am Ende des letzten Blocks (gleitend) */
-    float om_pitch, om_torch, om_rune, om_curse, om_vol, om_pan, om_aura, om_lofi;
+    float om_vol0;                            /* die Lautstärke am Ende des letzten Blocks (gleitend) */
+    float om_f0, olp[2][2];                   /* der Tiefpass von OMEN */
+    float om_pitch, om_torch, om_rune, om_curse, om_alch, om_vol, om_aura, om_lofi;
     int om_step, om_bar;
     float msm[4];
     int last_fate, last_quest;
@@ -838,15 +839,16 @@ void fk_render(float *l, float *r, int n)
     /* OMEN: ein LFO, der mehrere Ziele zugleich bewegt (PATH); frei oder im Takt des GROOVE (an jedem Takt ausgerichtet) */
     {
         static const float PW[FK_NPATH][8] = {
-            /* Tonhöhe (Cent), TORCH (Oktaven), RUNE, CURSE, Lautstärke, Pan, AURA, Lo-Fi */
-            {0, 1.5f, 0, 0, 0.7f, 0, 0, 0},           /* BREATH: Lautstärke und Filter atmen */
-            {0, 2.5f, 0.35f, 0, 0, 0, 0, 0},          /* FLAME: Filter und Klangfarbe flackern */
-            {35, 0, 0, 0, 0, 0.5f, 0, 0},             /* HAUNT: die Tonhöhe schwankt, der Klang geistert hin und her */
-            {0, 0, 0.2f, 0, 0, 0, 0.55f, 0},          /* AURA: der Resonator schwillt */
-            {0, 0, 0, 0, 0.4f, 0.9f, 0, 0},           /* TIDE: Ebbe und Flut im Stereo */
-            {0, 0, 0.3f, 0.8f, 0, 0, 0, 0},           /* CURSE: Ring / Sync / Verzerrung pumpen */
-            {0, 0, 0, 0, 0, 0, 0, 1.0f},              /* DECAY: Bits und Abtastrate zerfallen im Takt */
-            {15, 1.5f, 0.3f, 0.3f, 0.3f, 0.5f, 0.3f, 0.3f}};   /* STORM: alles */
+            /* nur der Klang, nicht das Stereofeld:
+             * Tonhöhe (Cent), Filter schließen (Oktaven), RUNE, CURSE, Lautstärke, ALCHEMY, AURA, Lo-Fi */
+            {0, 5.0f, 0.15f, 0, 0.45f, 0, 0, 0},      /* BREATH: das Filter atmet zu und auf, leiser im Ausatmen */
+            {0, 7.5f, 0.3f, 0, 0, 0, 0, 0},           /* FLAME: ein tiefes Filter-Auf-und-Zu (Wah) */
+            {60, 3.0f, 0.25f, 0, 0, 0, 0, 0},         /* HAUNT: die Tonhöhe schwankt (Vibrato bis ±60 Cent), dunkler */
+            {0, 3.5f, 0.2f, 0, 0, 0, 0.8f, 0},        /* AURA: der Resonator schwillt an, das Licht wird dunkler */
+            {0, 3.0f, 0.8f, 0, 0, 0.7f, 0, 0},        /* RUNE: Welle, Pulsbreite, Tabelle und ALCHEMY wandern (PWM) */
+            {0, 0, 0.3f, 0.8f, 0, 0, 0, 0},           /* CURSE: Ring / Sync / FM pumpen (springt wie ein Arpeggio) */
+            {0, 3.0f, 0, 0, 0, 0, 0, 1.0f},           /* DECAY: Bits und Abtastrate zerfallen im Takt */
+            {20, 5.0f, 0.4f, 0.5f, 0.2f, 0.3f, 0.4f, 0.4f}};   /* STORM: alles */
         int rv = E.raw[P_RATE], sh = (E.raw[P_SHAPE] * FK_NSHAPE) >> 7, pa = (E.raw[P_PATH] * FK_NPATH) >> 7;
         float pw = E.sm[P_POWER], ph0 = E.om_ph, x, d;
         const float *w = PW[pa];
@@ -884,13 +886,14 @@ void fk_render(float *l, float *r, int n)
         d = x * pw;
         E.om_out = d;
         E.om_pitch = d * w[0];
-        E.om_torch = d * w[1];
+        E.om_torch = -pw * w[1] * (0.5f + 0.5f * x);               /* das Filter schließt sich (nur nach unten) */
         k.r = clampf(k.r + d * w[2], 0.0f, 0.999f);
         k.c = clampf(k.c + d * w[3], -1.0f, 1.0f);
+        k.a = clampf(k.a + d * w[5], 0.0f, 0.999f);
         E.om_rune = d * w[2];
         E.om_curse = d * w[3];
-        E.om_vol = 1.0f - pw * w[4] * (0.5f - 0.5f * x);
-        E.om_pan = d * w[5];
+        E.om_alch = d * w[5];
+        E.om_vol = 1.0f - pw * w[4] * (0.5f + 0.5f * x);
         E.om_aura = pw * w[6] * (0.5f + 0.5f * x);
         E.om_lofi = pw * w[7] * (0.5f + 0.5f * x);
     }
@@ -934,7 +937,7 @@ void fk_render(float *l, float *r, int n)
         kb.h = absf(kb.h) < 0.03f ? 0.0f : kb.h;
         kb.r = clampf(E.msm[2] + E.wv[4] * 0.4f * E.sm[P_WANDER] + E.om_rune, 0.0f, 0.999f);
         kb.c = clampf(kb.c + E.om_curse, -1.0f, 1.0f);
-        kb.a = E.msm[3];
+        kb.a = clampf(E.msm[3] + E.om_alch, 0.0f, 0.999f);
         ga = fm_sqrtf(1.0f - m) * GAIN[E.algo];               /* gleiche Leistung */
         gb = fm_sqrtf(m) * GAIN[nx];
         if (m < 0.004f) {
@@ -980,7 +983,7 @@ void fk_render(float *l, float *r, int n)
     fc_lp = torch < 0.0f ? 18000.0f * fm_exp2f(torch * 9.0f) : 18000.0f;
     fc_hp = torch > 0.0f ? 20.0f * fm_exp2f(torch * 8.5f) : 20.0f;
     {   /* WANDER: auch das Filter wandert (bis 1,5 Oktaven) */
-        float wf = fm_exp2f(E.wv[5] * 1.5f * E.sm[P_WANDER] + E.om_torch);   /* und OMEN */
+        float wf = fm_exp2f(E.wv[5] * 1.5f * E.sm[P_WANDER]);
         fc_lp = clampf(fc_lp * wf, 40.0f, 18000.0f);
         fc_hp = clampf(fc_hp * wf, 10.0f, 15000.0f);
     }
@@ -1063,6 +1066,25 @@ void fk_render(float *l, float *r, int n)
                 E.rlp[j] = fm_flush(E.rlp[j]);
         }
     }
+    /* OMEN: ein eigener Tiefpass hinter AURA, links und rechts gleich (so wandert nichts im Stereofeld) */
+    if (E.om_torch < -0.01f || absf(E.olp[0][1]) > 1e-6f) {
+        float fc0 = 18000.0f * fm_exp2f(E.om_f0), fc1 = 18000.0f * fm_exp2f(E.om_torch);
+        float a0 = clampf(TAU * fc0 / FK_SR, 0.0f, 1.0f), a1 = clampf(TAU * fc1 / FK_SR, 0.0f, 1.0f);
+        for (i = 0; i < n; i++) {
+            float al = a0 + (a1 - a0) * ((float)i / (float)n);
+            E.olp[0][0] += (gl[i] - E.olp[0][0]) * al;
+            E.olp[0][1] += (E.olp[0][0] - E.olp[0][1]) * al;
+            E.olp[1][0] += (gr[i] - E.olp[1][0]) * al;
+            E.olp[1][1] += (E.olp[1][0] - E.olp[1][1]) * al;
+            gl[i] = E.olp[0][1];
+            gr[i] = E.olp[1][1];
+        }
+        for (c = 0; c < 2; c++) {
+            E.olp[c][0] = fm_flush(E.olp[c][0]);
+            E.olp[c][1] = fm_flush(E.olp[c][1]);
+        }
+    }
+    E.om_f0 = E.om_torch;
     /* AGE: halten */
     {
         static float acc, hl, hr;
@@ -1187,11 +1209,10 @@ void fk_render(float *l, float *r, int n)
         E.dcx[1] = b;
         m = (E.dcy[0] + E.dcy[1]) * 0.5f;
         s = (E.dcy[0] - E.dcy[1]) * 0.5f * wd;
-        {   /* OMEN: Lautstärke und Pan am Ausgang (mit dem Echo), über den Block gleitend */
-            float u = (float)i / (float)n, ov = E.om_vol0 + (E.om_vol - E.om_vol0) * u,
-                  op = E.om_pan0 + (E.om_pan - E.om_pan0) * u;
-            a = softc((m + s) * lg) * E.duck_g * ov * (op > 0.0f ? 1.0f - op : 1.0f);   /* nur die andere Seite leiser */
-            b = softc((m - s) * lg) * E.duck_g * ov * (op < 0.0f ? 1.0f + op : 1.0f);
+        {   /* OMEN: die Lautstärke am Ausgang (mit dem Echo), über den Block gleitend; beide Seiten gleich */
+            float ov = E.om_vol0 + (E.om_vol - E.om_vol0) * ((float)i / (float)n);
+            a = softc((m + s) * lg) * E.duck_g * ov;
+            b = softc((m - s) * lg) * E.duck_g * ov;
         }
         l[i] = a;
         r[i] = b;
@@ -1205,7 +1226,6 @@ void fk_render(float *l, float *r, int n)
         E.lvl += (u - E.lvl) * (u > E.lvl ? 0.01f : 0.0004f);
     }
     E.om_vol0 = E.om_vol;
-    E.om_pan0 = E.om_pan;
     E.dcy[0] = fm_flush(E.dcy[0]);
     E.dcy[1] = fm_flush(E.dcy[1]);
     E.env = fm_flush(E.env);

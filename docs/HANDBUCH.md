@@ -56,10 +56,11 @@ ein Knopf überspringt das. Nach dem Start ist es still (HOLD aus): PLAY schalte
 - **OMEN**, der LFO – eine Welle, die mehrere Regler zugleich bewegt (für alle Algorithmen gleich): **RATE** (frei von
   einer Welle pro Minute bis 20 Hz; läuft der GROOVE, in Notenwerten: 4 Takte bis 1/32, an jedem Takt ausgerichtet,
   auch mit MIDI-Clock), **SHAPE** (SINE, TRIANGLE, SAW, SQUARE, STAIRS – das Dreieck in 8 Stufen wie im Chip –,
-  CHANCE – je Welle ein Zufallswert), **POWER** (wie stark; ganz links aus), **PATH** (wohin): BREATH (Lautstärke und
-  Filter atmen), FLAME (Filter und Klangfarbe flackern), HAUNT (die Tonhöhe schwankt, der Klang geistert durchs
-  Stereo), AURA (der Resonator schwillt), TIDE (Ebbe und Flut im Stereo), CURSE (Ring / Sync pumpen), DECAY (Bits
-  und Abtastrate zerfallen im Takt), STORM (alles). SHAPE und PATH springen je Raste eine Stufe. Die Kristallkugel
+  CHANCE – je Welle ein Zufallswert), **POWER** (wie stark; ganz links aus), **PATH** (wohin – immer der Klang, nie das
+  Stereofeld): BREATH (das Filter atmet zu und auf, leiser im Ausatmen), FLAME (ein tiefes Filter-Auf-und-Zu),
+  HAUNT (Vibrato bis ±60 Cent), AURA (der Resonator schwillt an), RUNE (Welle, Pulsbreite, Tabelle und ALCHEMY
+  wandern), CURSE (Ring / Sync / FM pumpen – springt wie ein Arpeggio), DECAY (Bits und Abtastrate zerfallen im
+  Takt), STORM (alles). Tipp: mit wenig AURA (GLO) hört man RUNE und CURSE am deutlichsten. SHAPE und PATH springen je Raste eine Stufe. Die Kristallkugel
   im Bild pulsiert mit.
 
 Bipolare Regler rasten in der Mitte zwei Rasten lang ein.

@@ -12,7 +12,7 @@ const fk_param_info FK_PARAMS[FK_NP] = {
     {"RATE", 0}, {"SHAPE", 0}, {"POWER", 0}, {"PATH", 0},
 };
 const char *const FK_SHAPE_NAME[FK_NSHAPE] = {"SINE", "TRIANGLE", "SAW", "SQUARE", "STAIRS", "CHANCE"};
-const char *const FK_PATH_NAME[FK_NPATH] = {"BREATH", "FLAME", "HAUNT", "AURA", "TIDE", "CURSE", "DECAY", "STORM"};
+const char *const FK_PATH_NAME[FK_NPATH] = {"BREATH", "FLAME", "HAUNT", "AURA", "RUNE", "CURSE", "DECAY", "STORM"};
 /* OMEN: RATE frei 0,016 .. 20 Hz; zum GROOVE in Notenwerten (Zyklen je Takt) */
 static float omen_hz(int v) { return 0.016f * fm_exp2f((float)v * (10.29f / 127.0f)); }
 static const float OMEN_CPB[8] = {0.25f, 0.5f, 1.0f, 2.0f, 4.0f, 8.0f, 16.0f, 32.0f};
