@@ -25,7 +25,7 @@ One knob, one parameter (like FIKH-S), six pages:
 | ENV | RITUAL | TORCH (low / high pass) | PORTAL (±24 semitones) | AWAKEN (attack) | SLUMBER (release) |
 | EDIT | LORE | CREEP (everything glides: pitch up to 12 s, knobs up to 8 s) | WANDER (pitch, timbre, filter, pan and level drift by themselves) | BITS (16 .. 1 bit) | VOLUME |
 | GLO | SPELL | AGE (sample rate down to 2 kHz) | AURA (a resonator: chip tones ring into a drone) | SPEED (arpeggios, patterns) | WIDTH |
-| LFO (1–4×) | OMEN I–IV, four LFOs | RATE (free, or note values with the GROOVE) | SHAPE (sine, triangle, saw, square, stairs, chance) | POWER | PATH (where it goes, always the sound, never the stereo field: BREATH, FLAME, HAUNT, AURA, RUNE, CURSE, DECAY, STORM, MORPH) |
+| LFO (1–4×) | OMEN I–IV, four LFOs | RATE (free, or note values with the GROOVE) | SHAPE (sine, triangle, saw, square, stairs, chance, drift, swell, heart, bounce, chaos, turing) | POWER | PATH (where it goes, always the sound, never the stereo field: BREATH, FLAME, HAUNT, AURA, RUNE, CURSE, DECAY, STORM, MORPH) |
 
 SELECT is **WRATH**, one macro over everything for live play (past half the dragon appears). PRESET picks the
 algorithm, ALGORITHM is QUEST, a MORPH into the next algorithm, REC is FATE (dice, also the variants; held 1 s: deep). PLAY: HOLD, ARP: FREEZE (the

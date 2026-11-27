@@ -14,7 +14,7 @@ RUNE (wave, duty, table), ALCHEMY (per algorithm, shown when turned). HOME 2×/3
 pass), PORTAL (a detent a semitone, ±24), AWAKEN, SLUMBER. EDIT LORE: CREEP, WANDER, BITS (16 .. 1), VOLUME. GLO
 SPELL (all algorithms): AGE (sample rate down to 2 kHz), AURA (a resonator on root, fifth and octaves: the chip tones ring on into a drone), SPEED (1–60 Hz:
 arpeggios, patterns), WIDTH. LFO OMEN I–IV (press LFO again for the next), four LFOs, each on several targets at once (they add up): RATE (free, or note values 4 bars .. 1/32
-when the GROOVE runs, also with MIDI clock), SHAPE (sine, triangle, saw, square, stairs, chance), POWER, PATH (BREATH,
+when the GROOVE runs, also with MIDI clock), SHAPE (sine, triangle, saw, square, stairs, chance, drift, swell, heart, bounce, chaos, turing), POWER, PATH (BREATH,
 FLAME, HAUNT, AURA, RUNE, CURSE, DECAY, STORM, MORPH; the sound only, no panning).
 
 **Algorithms (PRESET):** 1 TORCHLIGHT, 2 CRYPT CHOIR, 3 GOBLIN CHORDS, 4 DRAGON BREATH, 5 PC SPEAKER, 6 POKEY CURSE,

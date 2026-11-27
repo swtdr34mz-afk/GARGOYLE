@@ -18,7 +18,7 @@ shot omen_breath.png
 # SHAPE: one step per detent
 turn K2 3
 wait 100
-expect p23 74
+expect p23 37
 wav o_square.wav
 wait 3000
 wavstop

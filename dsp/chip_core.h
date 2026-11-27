@@ -38,7 +38,7 @@ enum {
     FK_NP = P_OMEN + 16
 };
 #define FK_NPG (FK_NP - FK_NPA)
-#define FK_NSHAPE 6
+#define FK_NSHAPE 12
 #define FK_NOMEN 4
 #define FK_NPATH 9
 extern const char *const FK_SHAPE_NAME[FK_NSHAPE];

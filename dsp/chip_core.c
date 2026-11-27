@@ -115,6 +115,10 @@ static struct {
     uint8_t wt[4][32];                        /* die Tabellen (FATE würfelt sie) */
     uint8_t mraw[4];                          /* MORPH: CURSE, HORDE, RUNE, ALCHEMY des nächsten Algorithmus */
     float om_ph[FK_NOMEN], om_v[FK_NOMEN], om_sh[FK_NOMEN], om_out[FK_NOMEN];   /* OMEN: Phase, Wert, CHANCE, Ausgang */
+    float om_pr[FK_NOMEN];                    /* DRIFT: woher es gleitet */
+    float om_lz[FK_NOMEN][3];                 /* CHAOS: der Lorenz-Attraktor */
+    float om_tm[FK_NOMEN][8];                 /* TURING: die acht Stufen */
+    int om_ts[FK_NOMEN];
     float om_vol0;                            /* die Lautstärke am Ende des letzten Blocks (gleitend) */
     float om_f0, olp[2][2];                   /* der Tiefpass von OMEN */
     float qpk;                                /* BITS: der Spitzenpegel */
@@ -883,13 +887,73 @@ void fk_render(float *l, float *r, int n)
             case 3: x = x < 0.5f ? 1.0f : -1.0f; break;                 /* SQUARE */
             case 4: x = x < 0.5f ? 4.0f * x - 1.0f : 3.0f - 4.0f * x;    /* STAIRS: das Dreieck in 8 Stufen, wie im Chip */
                 x = (float)(int)((x + 1.0f) * 3.999f) * (2.0f / 7.0f) - 1.0f; break;
-            default:                                                    /* CHANCE: je Welle ein neuer Zufallswert */
+            case 5:                                                     /* CHANCE: je Welle ein neuer Zufallswert */
                 if (E.om_ph[l] < ph0)
                     E.om_sh[l] = rng_f(&E.rng) * 2.0f - 1.0f;
                 x = E.om_sh[l];
                 break;
+            case 6:                                                     /* DRIFT: weicher Zufall, gleitet zum nächsten */
+                if (E.om_ph[l] < ph0) {
+                    E.om_pr[l] = E.om_sh[l];
+                    E.om_sh[l] = rng_f(&E.rng) * 2.0f - 1.0f;
+                }
+                x = E.om_pr[l] + (E.om_sh[l] - E.om_pr[l]) * x * x * (3.0f - 2.0f * x);
+                break;
+            case 7:                                                     /* SWELL: langsam an (immer schneller), schnell zurück */
+                x = x < 0.85f ? (x / 0.85f) * (x / 0.85f) : 1.0f - (x - 0.85f) / 0.15f;
+                x = x * 2.0f - 1.0f;
+                break;
+            case 8: {                                                   /* HEART: lub-dub, dann Ruhe */
+                float a = 1.0f - absf(x - 0.06f) / 0.06f, b = 1.0f - absf(x - 0.24f) / 0.07f;
+                a = a > 0.0f ? a * a : 0.0f;
+                b = b > 0.0f ? b * b : 0.0f;
+                x = (a + 0.7f * b) * 2.0f - 1.0f;
+                break;
             }
-            if (sh == 3 || sh == 5)                                     /* Sprünge: ganz kurz geglättet, kein Klicken */
+            case 9: {                                                   /* BOUNCE: ein fallender Ball, die Sprünge werden kleiner */
+                static const float H[5] = {1.0f, 0.6f, 0.36f, 0.22f, 0.13f}, D[5] = {0.3053f, 0.2365f, 0.1832f, 0.1432f, 0.1118f};
+                float s0 = 0.0f, y = 0.0f;
+                for (j = 0; j < 5; j++) {
+                    if (x < s0 + D[j] || j == 4) {
+                        float u = clampf((x - s0) / D[j], 0.0f, 1.0f);
+                        y = H[j] * 4.0f * u * (1.0f - u);
+                        break;
+                    }
+                    s0 += D[j];
+                }
+                x = y * 2.0f - 1.0f;
+                break;
+            }
+            case 10: {                                                  /* CHAOS: der Lorenz-Attraktor, nie zweimal gleich */
+                float *z = E.om_lz[l], dt = clampf((omen_sync_bpm > 0.0f ? OMEN_CPB[(rv * 8) >> 7] * omen_sync_bpm / 240.0f
+                                                                         : omen_hz(rv)) * (float)n / FK_SR * 0.75f, 0.0f, 0.02f);
+                int s;
+                if (z[0] == 0.0f && z[1] == 0.0f && z[2] == 0.0f) {
+                    z[0] = 1.0f + (float)l;
+                    z[1] = 1.0f;
+                    z[2] = 20.0f;
+                }
+                for (s = 0; s < 4; s++) {
+                    float dx = 10.0f * (z[1] - z[0]), dy = z[0] * (28.0f - z[2]) - z[1], dz = z[0] * z[1] - 2.6667f * z[2];
+                    z[0] += dx * dt;
+                    z[1] += dy * dt;
+                    z[2] += dz * dt;
+                }
+                x = clampf(z[0] * 0.055f, -1.0f, 1.0f);
+                break;
+            }
+            default: {                                                  /* TURING: 8 Stufen im Kreis, selten ändert sich eine */
+                int st = (int)(x * 7.999f);
+                if (st != E.om_ts[l]) {
+                    E.om_ts[l] = st;
+                    if (E.om_tm[l][st] == 0.0f || rng_f(&E.rng) < 0.125f)
+                        E.om_tm[l][st] = rng_f(&E.rng) * 2.0f - 1.0f + 1e-6f;
+                }
+                x = E.om_tm[l][st];
+                break;
+            }
+            }
+            if (sh == 3 || sh == 5 || sh == 11)                         /* Sprünge: ganz kurz geglättet, kein Klicken */
                 E.om_v[l] += (x - E.om_v[l]) * clampf((float)n / (FK_SR * 0.004f), 0.0f, 1.0f);
             else
                 E.om_v[l] = x;
