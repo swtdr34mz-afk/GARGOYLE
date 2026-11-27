@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MPL-2.0
+# GARGOYLE words for a screen reader (fm1-reader): the text on the screen <TAB> what to say.
+# url: https://swtdr34mz-afk.github.io/GARGOYLE/words/
+GARGOYLE	gargoyle
+HZ	hertz
+MS	milliseconds
+ST	semitones
+DB	decibels
+BPM	beats per minute

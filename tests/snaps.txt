@@ -1,0 +1,35 @@
+# GARGOYLE: snapshots. SAVE held + one of the first eight white keys stores, SEL held + the key loads
+wait 4000
+turn SELECT 4
+expect algo 4
+wait 100
+turn K1 6 120
+expect mac0 74
+press SAVE
+wait 100
+shot snapstore.png
+key 2 down 100
+wait 50
+key 2 up
+release SAVE
+expect snap 2
+expect snapused2 1
+expect note -1
+turn SELECT 9
+expect algo 13
+turn K1 -4 120
+press SEL
+wait 100
+shot snapload.png
+key 2 down 100
+wait 50
+key 2 up
+release SEL
+expect algo 4
+expect mac0 74
+press SEL
+key 4 down 100
+wait 50
+key 4 up
+release SEL
+expect algo 4
