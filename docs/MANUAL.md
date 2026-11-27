@@ -17,7 +17,7 @@ arpeggios, patterns), WIDTH.
 
 **Algorithms (PRESET):** 1 TORCHLIGHT, 2 CRYPT CHOIR, 3 GOBLIN CHORDS, 4 DRAGON BREATH, 5 PC SPEAKER, 6 POKEY CURSE,
 7 SID RITUAL, 8 ADLIB HALL, 9 BEHOLDER, 10 TREASURE, 11 SKELETON MARCH, 12 MAGE TOWER, 13 THRONE OF BONES, 14 PIT OF
-DOOM, 15 WIND OF ABYSS, 16 SPELLBOOK. ALGORITHM: QUEST (variants, coarse). REC: FATE (dice; held 1 s deep). SEQ held:
+DOOM, 15 WIND OF ABYSS, 16 SPELLBOOK. ALGORITHM: QUEST = MORPH into the next algorithm (it plays with its own knobs; both sound in between). REC: FATE (dice, also the variants: wave, chord, scale; held 1 s deep). SEQ held:
 factory sound.
 
 **WRATH (SELECT):** one macro over everything for live play, 4 a detent.

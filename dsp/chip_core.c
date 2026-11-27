@@ -81,6 +81,19 @@ static inline float w_wt(const uint8_t *t, float ph) { return (float)t[(int)(ph 
 
 /* ---- der Zustand ---- */
 #define NV 4
+/* der Zustand eines laufenden Algorithmus: zweimal da, damit beim MORPH zwei gleichzeitig klingen */
+typedef struct {
+    float ph[NV], ph2[NV], duty_ph;
+    lfsr_t nz[NV];
+    poky_t pk[NV];
+    float fmfb[NV];
+    float arp_ph;                             /* die Arpeggios und Muster (SPEED) */
+    int arp_i, step_note;
+    float sh_l, sh_r, sh_acc;
+    float bp[2][2];                           /* das eigene Filter (WIND OF ABYSS) */
+} vst_t;
+static vst_t *V;                              /* der Algorithmus, der gerade rechnet */
+
 static struct {
     fk_mem m;
     int algo, algo_next;
@@ -93,17 +106,16 @@ static struct {
     float vel, pitch, target, bend, glide;
     float env, atk, rel;
     /* die Stimmen */
-    float ph[NV], ph2[NV], duty_ph, drift[NV], dv[NV];
+    vst_t vs[2];                              /* die Stimmen: [0] der Algorithmus, [1] der nächste (MORPH) */
+    float drift[NV], dv[NV];
     float wv[8], wt_[8], wcnt[8];             /* WANDER: langsame Zufallswege (Stimmung je Stimme, RUNE, TORCH, Pan, Atem) */
     uint32_t dw[8];                           /* die Diffusoren: Schreibstellen */
     float wow;
-    lfsr_t nz[NV];
-    poky_t pk[NV];
     uint8_t wt[4][32];                        /* die Tabellen (FATE würfelt sie) */
-    float fmfb[NV];
-    float arp_ph;                             /* die Arpeggios und Muster (SPEED) */
-    int arp_i, step_note, last_fate, last_quest;
-    float vib_ph, sh_l, sh_r, sh_acc;
+    uint8_t mraw[4];                          /* MORPH: CURSE, HORDE, RUNE, ALCHEMY des nächsten Algorithmus */
+    float msm[4];
+    int last_fate, last_quest;
+    float vib_ph;
     uint32_t rw;                              /* AURA: der Resonator */
     float rlp[FK_NRES], rlen[FK_NRES];
     uint32_t rng;
@@ -141,11 +153,15 @@ static void reseed(int s)
     }
     for (i = 0; i < NV; i++) {
         E.dv[i] = (rng_f(&r) - 0.5f) * 2.0f;
-        E.pk[i].p4 = 5u + (uint32_t)i;
-        E.pk[i].p5 = 9u + (uint32_t)i;
-        E.pk[i].p9 = 77u + (uint32_t)i * 3u;
-        E.pk[i].p17 = 1234u + (uint32_t)i * 777u;
-        E.nz[i].r = (uint16_t)(1u + (rng_u(&r) & 0x7FFEu));
+        int v;
+        uint16_t nzr = (uint16_t)(1u + (rng_u(&r) & 0x7FFEu));
+        for (v = 0; v < 2; v++) {
+            E.vs[v].pk[i].p4 = 5u + (uint32_t)i;
+            E.vs[v].pk[i].p5 = 9u + (uint32_t)i;
+            E.vs[v].pk[i].p9 = 77u + (uint32_t)i * 3u;
+            E.vs[v].pk[i].p17 = 1234u + (uint32_t)i * 777u;
+            E.vs[v].nz[i].r = (uint16_t)(nzr ^ (uint16_t)(v * 0x2A5u)) | 1u;
+        }
     }
     E.rng = r | 1u;
 }
@@ -182,6 +198,12 @@ void fk_algo(int a)
     E.algo_next = a;
     E.xf_dir = -1.0f;
 }
+void fk_morph(const uint8_t p4[4])
+{
+    int i;
+    for (i = 0; i < 4; i++)
+        E.mraw[i] = p4[i];
+}
 void fk_params(const uint8_t p[FK_NP])
 {
     int i;
@@ -192,7 +214,7 @@ void fk_params(const uint8_t p[FK_NP])
 static void gate_on(void)
 {
     if (!E.gate && E.env < 0.001f)
-        E.arp_i = 0;
+        E.vs[0].arp_i = E.vs[1].arp_i = 0;
     E.gate = 1;
 }
 void fk_note_on(int note, int vel)
@@ -280,20 +302,20 @@ static void a_torch(const ctl *k, float *l, float *r, int n)
     float d0 = 0.06f + 0.44f * k->r, sw = 0.05f + k->a * 2.5f;
     for (i = 0; i < n; i++) {
         float f1 = k->f * drift_of(0), f2 = k->f * horde_ratio(1, k->h) * drift_of(1), a, b, d2;
-        E.duty_ph = wrap1(E.duty_ph + sw / FK_SR);
-        d2 = 0.06f + 0.44f * (0.5f + 0.5f * fk_sin(E.duty_ph)) * (0.3f + 0.7f * k->r);
-        adv(&E.ph[0], f1);
+        V->duty_ph = wrap1(V->duty_ph + sw / FK_SR);
+        d2 = 0.06f + 0.44f * (0.5f + 0.5f * fk_sin(V->duty_ph)) * (0.3f + 0.7f * k->r);
+        adv(&V->ph[0], f1);
         if (k->c > 0.0f) {                    /* Sync: die zweite startet mit der ersten neu, höher gestimmt */
             float ratio = 1.0f + k->c * 3.0f;
-            E.ph2[1] = wrap1(E.ph2[1] + f1 * ratio / FK_SR);
-            if (E.ph[0] < f1 / FK_SR)
-                E.ph2[1] = 0.0f;
-            b = w_pulse(E.ph2[1], d2);
+            V->ph2[1] = wrap1(V->ph2[1] + f1 * ratio / FK_SR);
+            if (V->ph[0] < f1 / FK_SR)
+                V->ph2[1] = 0.0f;
+            b = w_pulse(V->ph2[1], d2);
         } else {
-            adv(&E.ph[1], f2);
-            b = w_pulse(E.ph[1], d2);
+            adv(&V->ph[1], f2);
+            b = w_pulse(V->ph[1], d2);
         }
-        a = w_pulse(E.ph[0], d0);
+        a = w_pulse(V->ph[0], d0);
         if (k->c < 0.0f)
             b = b + (a * b - b) * (-k->c);
         l[i] = (a * 0.6f + b * 0.4f) * 0.45f;
@@ -347,24 +369,24 @@ static void a_crypt(const ctl *k, float *l, float *r, int n)
     for (i = 0; i < n; i++) {
         float a, b, c, f1s = f1;
         if (k->c != 0.0f) {               /* die Sweep-Einheit: in Schritten (128 Hz / Takt), springt zurück */
-            E.arp_ph += (8.0f + k->sp * 1.5f) / FK_SR;
-            if (E.arp_ph >= 1.0f) {
-                E.arp_ph -= 1.0f;
-                E.arp_i = (E.arp_i + 1) % (2 + (int)(absf(k->c) * 6.0f));
+            V->arp_ph += (8.0f + k->sp * 1.5f) / FK_SR;
+            if (V->arp_ph >= 1.0f) {
+                V->arp_ph -= 1.0f;
+                V->arp_i = (V->arp_i + 1) % (2 + (int)(absf(k->c) * 6.0f));
             }
-            f1s = f1 * fm_exp2f((float)E.arp_i * (k->c > 0.0f ? 1.0f : -1.0f) * (0.125f + absf(k->c) * 0.375f));
+            f1s = f1 * fm_exp2f((float)V->arp_i * (k->c > 0.0f ? 1.0f : -1.0f) * (0.125f + absf(k->c) * 0.375f));
         }
-        adv(&E.ph[0], f1s);
-        adv(&E.ph[1], f2);
-        adv(&E.ph[2], f3 * (1.0f / 32.0f) * 32.0f);
-        a = w_pulse(E.ph[0], duty) * pvol;
-        b = w_pulse(E.ph[1], duty == 0.75f ? 0.25f : duty) * pvol;
-        c = ((float)(tab[(int)(E.ph[2] * 32.0f) & 31] >> vs) * (2.0f / 15.0f) - (wvol > 0.0f ? 1.0f * wvol : 0.0f)) * (vs == 3 ? 0.0f : 1.0f);
+        adv(&V->ph[0], f1s);
+        adv(&V->ph[1], f2);
+        adv(&V->ph[2], f3 * (1.0f / 32.0f) * 32.0f);
+        a = w_pulse(V->ph[0], duty) * pvol;
+        b = w_pulse(V->ph[1], duty == 0.75f ? 0.25f : duty) * pvol;
+        c = ((float)(tab[(int)(V->ph[2] * 32.0f) & 31] >> vs) * (2.0f / 15.0f) - (wvol > 0.0f ? 1.0f * wvol : 0.0f)) * (vs == 3 ? 0.0f : 1.0f);
         /* der Hochpass des Game Boy (der Kondensator am Ausgang) */
-        E.sh_l += ((a + c) - E.sh_l) * 0.004f;
-        E.sh_r += ((b + c) - E.sh_r) * 0.004f;
-        l[i] = ((a + c) - E.sh_l) * 0.30f;
-        r[i] = ((b + c) - E.sh_r) * 0.30f;
+        V->sh_l += ((a + c) - V->sh_l) * 0.004f;
+        V->sh_r += ((b + c) - V->sh_r) * 0.004f;
+        l[i] = ((a + c) - V->sh_l) * 0.30f;
+        r[i] = ((b + c) - V->sh_r) * 0.30f;
     }
 }
 
@@ -381,17 +403,17 @@ static void a_goblin(const ctl *k, float *l, float *r, int n)
     for (i = 0; i < n; i++) {
         int st;
         float f, x, y;
-        E.arp_ph += rate / FK_SR;
-        if (E.arp_ph >= 1.0f) {
-            E.arp_ph -= 1.0f;
-            E.arp_i = (E.arp_i + 1) % (4 * span);
+        V->arp_ph += rate / FK_SR;
+        if (V->arp_ph >= 1.0f) {
+            V->arp_ph -= 1.0f;
+            V->arp_i = (V->arp_i + 1) % (4 * span);
         }
-        st = CHORD[ch][E.arp_i & 3] + 12 * (E.arp_i / 4);
+        st = CHORD[ch][V->arp_i & 3] + 12 * (V->arp_i / 4);
         f = k->f * fm_exp2f((float)st / 12.0f) * drift_of(0);
-        adv(&E.ph[0], f);
-        x = k->r < 0.33f ? w_pulse(E.ph[0], 0.125f + k->r) : k->r < 0.66f ? w_saw4(E.ph[0]) : w_tri4(E.ph[0]);
-        adv(&E.ph[1], f * horde_ratio(1, k->h) * 0.5f);
-        y = w_pulse(E.ph[1], 0.5f);
+        adv(&V->ph[0], f);
+        x = k->r < 0.33f ? w_pulse(V->ph[0], 0.125f + k->r) : k->r < 0.66f ? w_saw4(V->ph[0]) : w_tri4(V->ph[0]);
+        adv(&V->ph[1], f * horde_ratio(1, k->h) * 0.5f);
+        y = w_pulse(V->ph[1], 0.5f);
         if (k->c < 0.0f)
             x = x + (x * y - x) * (-k->c);
         else if (k->c > 0.0f)
@@ -407,13 +429,13 @@ static void a_breath(const ctl *k, float *l, float *r, int n)
 {
     int i;
     for (i = 0; i < n; i++) {
-        float clk = k->f * (8.0f + k->r * 120.0f), a = w_noise(&E.nz[0], clk, 1), b = w_noise(&E.nz[1], clk * horde_ratio(1, k->h), 1);
+        float clk = k->f * (8.0f + k->r * 120.0f), a = w_noise(&V->nz[0], clk, 1), b = w_noise(&V->nz[1], clk * horde_ratio(1, k->h), 1);
         float p;
-        adv(&E.ph[2], k->f * 0.5f * drift_of(2));
-        p = w_pulse(E.ph[2], 0.25f);
+        adv(&V->ph[2], k->f * 0.5f * drift_of(2));
+        p = w_pulse(V->ph[2], 0.25f);
         if (k->c > 0.0f) {
-            a = a + (w_noise(&E.nz[2], clk * 2.0f, 0) - a) * k->c;
-            b = b + (w_noise(&E.nz[3], clk * 2.1f, 0) - b) * k->c;
+            a = a + (w_noise(&V->nz[2], clk * 2.0f, 0) - a) * k->c;
+            b = b + (w_noise(&V->nz[3], clk * 2.1f, 0) - b) * k->c;
         } else if (k->c < 0.0f) {
             a *= 1.0f + (p - 1.0f) * (-k->c);
             b *= 1.0f + (p - 1.0f) * (-k->c);
@@ -433,21 +455,21 @@ static void a_speaker(const ctl *k, float *l, float *r, int n)
     for (i = 0; i < n; i++) {
         float f, out;
         int sel;
-        E.arp_ph += rate / FK_SR;
-        if (E.arp_ph >= 1.0f) {
-            E.arp_ph -= 1.0f;
-            E.arp_i = (E.arp_i + 1) % 3;
+        V->arp_ph += rate / FK_SR;
+        if (V->arp_ph >= 1.0f) {
+            V->arp_ph -= 1.0f;
+            V->arp_i = (V->arp_i + 1) % 3;
         }
-        sel = E.arp_i;
+        sel = V->arp_i;
         f = k->f * (sel == 0 ? 1.0f : sel == 1 ? i1 : i2) * drift_of(sel);
-        adv(&E.ph[0], f);
+        adv(&V->ph[0], f);
         if (k->a > 0.02f) {                   /* RealSound: die Pulsbreite folgt einem Sinus, mit 15 kHz getaktet */
-            float s = fk_sin(E.ph[0]) * 0.5f + 0.5f;
-            adv(&E.ph[1], 15000.0f);
-            out = E.ph[1] < (s * k->a + (1.0f - k->a) * (0.05f + 0.45f * k->r)) ? 1.0f : -1.0f;
-            out = E.ph[0] < 0.5f || k->a > 0.5f ? out : -out;
+            float s = fk_sin(V->ph[0]) * 0.5f + 0.5f;
+            adv(&V->ph[1], 15000.0f);
+            out = V->ph[1] < (s * k->a + (1.0f - k->a) * (0.05f + 0.45f * k->r)) ? 1.0f : -1.0f;
+            out = V->ph[0] < 0.5f || k->a > 0.5f ? out : -out;
         } else {
-            out = w_pulse(E.ph[0], 0.05f + 0.45f * k->r);
+            out = w_pulse(V->ph[0], 0.05f + 0.45f * k->r);
         }
         l[i] = r[i] = out * 0.32f;
     }
@@ -459,16 +481,16 @@ static void a_pokey(const ctl *k, float *l, float *r, int n)
 {
     int i, m1 = (int)(k->r * 5.99f), m2 = (m1 + 1 + (int)(k->a * 4.0f)) % 6;
     for (i = 0; i < n; i++) {
-        float a = w_poky(&E.pk[0], k->f * drift_of(0), m1);
-        float b = w_poky(&E.pk[1], k->f * horde_ratio(1, k->h) * (k->a > 0.5f ? 0.5f : 1.0f) * drift_of(1), m2), x, y;
+        float a = w_poky(&V->pk[0], k->f * drift_of(0), m1);
+        float b = w_poky(&V->pk[1], k->f * horde_ratio(1, k->h) * (k->a > 0.5f ? 0.5f : 1.0f) * drift_of(1), m2), x, y;
         if (k->c > 0.0f) {                    /* XOR */
             float xo = (a > 0.0f) != (b > 0.0f) ? 1.0f : -1.0f;
             x = a + (xo - a) * k->c;
             y = b + (xo - b) * k->c;
         } else if (k->c < 0.0f) {             /* der "Hochpass": der zweite Kanal tastet den ersten ab */
             if (b > 0.0f)
-                E.sh_l = a;
-            x = a + (E.sh_l - a) * (-k->c);
+                V->sh_l = a;
+            x = a + (V->sh_l - a) * (-k->c);
             y = b;
         } else {
             x = a;
@@ -488,16 +510,16 @@ static void a_sid(const ctl *k, float *l, float *r, int n)
     float ratio = RAT[(int)(k->a * 7.99f)];
     for (i = 0; i < n; i++) {
         float f1 = k->f * drift_of(0), f2 = f1 * ratio * horde_ratio(1, k->h), a, b, c3;
-        adv(&E.ph[0], f1);
-        adv(&E.ph[1], f2);
-        if (k->c > 0.0f && E.ph[0] < f1 / FK_SR)
-            E.ph[1] = wrap1(E.ph[1] * (1.0f - k->c));
-        a = k->r < 0.33f ? w_tri4(E.ph[0]) : k->r < 0.66f ? w_saw4(E.ph[0]) : w_pulse(E.ph[0], 0.5f - (k->r - 0.66f));
-        b = w_tri4(E.ph[1]);
+        adv(&V->ph[0], f1);
+        adv(&V->ph[1], f2);
+        if (k->c > 0.0f && V->ph[0] < f1 / FK_SR)
+            V->ph[1] = wrap1(V->ph[1] * (1.0f - k->c));
+        a = k->r < 0.33f ? w_tri4(V->ph[0]) : k->r < 0.66f ? w_saw4(V->ph[0]) : w_pulse(V->ph[0], 0.5f - (k->r - 0.66f));
+        b = w_tri4(V->ph[1]);
         if (k->c < 0.0f)                      /* Ring: die Welle des ersten mit dem Vorzeichen des zweiten */
-            a = a + ((E.ph[1] < 0.5f ? a : -a) - a) * (-k->c);
-        adv(&E.ph[2], f1 * 1.003f * horde_ratio(2, k->h));
-        c3 = w_saw4(E.ph[2]);
+            a = a + ((V->ph[1] < 0.5f ? a : -a) - a) * (-k->c);
+        adv(&V->ph[2], f1 * 1.003f * horde_ratio(2, k->h));
+        c3 = w_saw4(V->ph[2]);
         l[i] = (a * 0.55f + b * 0.25f + c3 * 0.2f * absf(k->h)) * 0.5f;
         r[i] = (a * 0.45f + b * 0.35f + c3 * 0.2f * absf(k->h)) * 0.5f;
     }
@@ -525,11 +547,11 @@ static void a_adlib(const ctl *k, float *l, float *r, int n)
         int v;
         for (v = 0; v < 2; v++) {
             float f = k->f * horde_ratio(v, k->h) * drift_of(v), m;
-            adv(&E.ph2[v], f * mul);
-            m = opl_wave(wrap1(E.ph2[v] + E.fmfb[v] * fb), w);
-            E.fmfb[v] = m;
-            adv(&E.ph[v], f);
-            s += opl_wave(wrap1(E.ph[v] + m * idx * 0.5f), w ? (w + v) & 3 : 0) * (v ? 0.4f : 0.6f);
+            adv(&V->ph2[v], f * mul);
+            m = opl_wave(wrap1(V->ph2[v] + V->fmfb[v] * fb), w);
+            V->fmfb[v] = m;
+            adv(&V->ph[v], f);
+            s += opl_wave(wrap1(V->ph[v] + m * idx * 0.5f), w ? (w + v) & 3 : 0) * (v ? 0.4f : 0.6f);
         }
         s = (float)(int)(s * 32.0f) * (1.0f / 32.0f);   /* die Karte rechnete grob: 6 Bit Pegel */
         l[i] = r[i] = s * 0.5f;
@@ -545,12 +567,12 @@ static void a_beholder(const ctl *k, float *l, float *r, int n)
         float sl = 0.0f, sr = 0.0f;
         for (v = 0; v < 3; v++) {
             float vr = (4.0f + (float)v * 2.3f) * (0.3f + k->sp * 0.05f), f, x;
-            E.ph2[v] = wrap1(E.ph2[v] + vr / FK_SR);
-            f = k->f * horde_ratio(v, k->h) * drift_of(v) * fm_exp2f(VT[(int)(E.ph2[v] * 8.0f) & 7] * k->a * 0.5f / 12.0f);
-            adv(&E.ph[v], f);
-            x = w_pulse(E.ph[v], 0.08f + 0.42f * k->r * (1.0f - 0.3f * (float)v));
+            V->ph2[v] = wrap1(V->ph2[v] + vr / FK_SR);
+            f = k->f * horde_ratio(v, k->h) * drift_of(v) * fm_exp2f(VT[(int)(V->ph2[v] * 8.0f) & 7] * k->a * 0.5f / 12.0f);
+            adv(&V->ph[v], f);
+            x = w_pulse(V->ph[v], 0.08f + 0.42f * k->r * (1.0f - 0.3f * (float)v));
             if (k->c < 0.0f && v)
-                x = x + (x * w_pulse(E.ph[0], 0.5f) - x) * (-k->c);
+                x = x + (x * w_pulse(V->ph[0], 0.5f) - x) * (-k->c);
             sl += x * (v == 1 ? 0.2f : 0.4f);
             sr += x * (v == 2 ? 0.2f : 0.4f);
         }
@@ -566,25 +588,25 @@ static void a_treasure(const ctl *k, float *l, float *r, int n)
     float rate = 2.0f + k->sp * 0.6f, ratio = 1.4f + k->a * 2.6f;
     for (i = 0; i < n; i++) {
         float f, m, s;
-        E.arp_ph += rate / FK_SR;
-        if (E.arp_ph >= 1.0f) {
-            E.arp_ph -= 1.0f;
-            E.arp_i = (int)(rng_u(&E.rng) & 7u);
-            E.sh_acc = 1.0f;                  /* angeschlagen */
+        V->arp_ph += rate / FK_SR;
+        if (V->arp_ph >= 1.0f) {
+            V->arp_ph -= 1.0f;
+            V->arp_i = (int)(rng_u(&E.rng) & 7u);
+            V->sh_acc = 1.0f;                  /* angeschlagen */
         }
-        E.sh_acc *= 0.99985f - 0.0003f * (1.0f - k->r);
-        f = k->f * 2.0f * fm_exp2f((float)(CHORD[ch][E.arp_i & 3] + 12 * (E.arp_i >> 2)) / 12.0f) * drift_of(0);
-        adv(&E.ph2[0], f * ratio);
-        m = fk_sin(E.ph2[0]) * (1.0f + 2.0f * k->r) * E.sh_acc;
-        adv(&E.ph[0], f);
-        s = fk_sin(wrap1(E.ph[0] + m * 0.3f)) * E.sh_acc;
-        adv(&E.ph[1], k->f * horde_ratio(1, k->h) * 0.5f);
-        s += w_tri4(E.ph[1]) * 0.25f;         /* ein leiser Ton darunter, damit es ein Drone bleibt */
+        V->sh_acc *= 0.99985f - 0.0003f * (1.0f - k->r);
+        f = k->f * 2.0f * fm_exp2f((float)(CHORD[ch][V->arp_i & 3] + 12 * (V->arp_i >> 2)) / 12.0f) * drift_of(0);
+        adv(&V->ph2[0], f * ratio);
+        m = fk_sin(V->ph2[0]) * (1.0f + 2.0f * k->r) * V->sh_acc;
+        adv(&V->ph[0], f);
+        s = fk_sin(wrap1(V->ph[0] + m * 0.3f)) * V->sh_acc;
+        adv(&V->ph[1], k->f * horde_ratio(1, k->h) * 0.5f);
+        s += w_tri4(V->ph[1]) * 0.25f;         /* ein leiser Ton darunter, damit es ein Drone bleibt */
         if (k->c != 0.0f)
-            s = s + (s * w_pulse(E.ph[1], 0.5f) - s) * absf(k->c);
+            s = s + (s * w_pulse(V->ph[1], 0.5f) - s) * absf(k->c);
         s = (float)(int)(s * 16.0f) * (1.0f / 16.0f);
-        l[i] = s * (0.5f + 0.1f * (float)(E.arp_i & 1));
-        r[i] = s * (0.6f - 0.1f * (float)(E.arp_i & 1));
+        l[i] = s * (0.5f + 0.1f * (float)(V->arp_i & 1));
+        r[i] = s * (0.6f - 0.1f * (float)(V->arp_i & 1));
     }
 }
 
@@ -596,17 +618,17 @@ static void a_skeleton(const ctl *k, float *l, float *r, int n)
     float rate = 2.0f + k->sp * 0.25f;
     for (i = 0; i < n; i++) {
         float b, t;
-        E.arp_ph += rate / FK_SR;
-        if (E.arp_ph >= 1.0f) {
-            E.arp_ph -= 1.0f;
+        V->arp_ph += rate / FK_SR;
+        if (V->arp_ph >= 1.0f) {
+            V->arp_ph -= 1.0f;
             if (rng_f(&E.rng) < 0.25f + 0.75f * k->a)
-                E.sh_acc = 1.0f;
+                V->sh_acc = 1.0f;
         }
-        E.sh_acc *= 0.9993f;
-        adv(&E.ph[0], k->f * 0.5f * drift_of(0));
-        adv(&E.ph[1], k->f * 0.5f * horde_ratio(1, k->h) * drift_of(1));
-        b = (k->r < 0.5f ? w_tri4(E.ph[0]) : w_saw4(E.ph[0])) * 0.7f + w_tri4(E.ph[1]) * 0.3f * absf(k->h);
-        t = w_noise(&E.nz[0], 2000.0f + (k->c + 1.0f) * 12000.0f, k->c > 0.5f) * E.sh_acc * E.sh_acc;
+        V->sh_acc *= 0.9993f;
+        adv(&V->ph[0], k->f * 0.5f * drift_of(0));
+        adv(&V->ph[1], k->f * 0.5f * horde_ratio(1, k->h) * drift_of(1));
+        b = (k->r < 0.5f ? w_tri4(V->ph[0]) : w_saw4(V->ph[0])) * 0.7f + w_tri4(V->ph[1]) * 0.3f * absf(k->h);
+        t = w_noise(&V->nz[0], 2000.0f + (k->c + 1.0f) * 12000.0f, k->c > 0.5f) * V->sh_acc * V->sh_acc;
         l[i] = (b * 0.75f + t * 0.5f) * 0.5f;
         r[i] = (b * 0.75f + t * 0.45f) * 0.5f;
     }
@@ -632,12 +654,12 @@ static void a_mage(const ctl *k, float *l, float *r, int n)
     int i, v;
     for (i = 0; i < n; i++) {
         float sl = 0.0f, sr = 0.0f, m;
-        E.duty_ph = wrap1(E.duty_ph + (0.02f + k->a * 1.5f) / FK_SR);
-        m = clampf(k->r + 0.3f * k->a * fk_sin(E.duty_ph), 0.0f, 0.999f);
+        V->duty_ph = wrap1(V->duty_ph + (0.02f + k->a * 1.5f) / FK_SR);
+        m = clampf(k->r + 0.3f * k->a * fk_sin(V->duty_ph), 0.0f, 0.999f);
         for (v = 0; v < 2; v++) {
             float f = k->f * horde_ratio(v, k->h) * drift_of(v), x;
-            adv(&E.ph[v], f);
-            x = morph_wave(E.ph[v], m, E.wt[v], 0.5f - 0.44f * absf(k->c) * (0.5f + 0.5f * fk_sin(E.duty_ph * 3.0f + (float)v)));
+            adv(&V->ph[v], f);
+            x = morph_wave(V->ph[v], m, E.wt[v], 0.5f - 0.44f * absf(k->c) * (0.5f + 0.5f * fk_sin(V->duty_ph * 3.0f + (float)v)));
             sl += x * (v ? 0.35f : 0.65f);
             sr += x * (v ? 0.65f : 0.35f);
         }
@@ -653,17 +675,17 @@ static void a_throne(const ctl *k, float *l, float *r, int n)
     float rate = 10.0f + k->sp * 2.0f;
     for (i = 0; i < n; i++) {
         float f, x, sub;
-        E.arp_ph += rate / FK_SR;
-        if (E.arp_ph >= 1.0f) {
-            E.arp_ph -= 1.0f;
-            E.arp_i = (E.arp_i + 1) % octs;
+        V->arp_ph += rate / FK_SR;
+        if (V->arp_ph >= 1.0f) {
+            V->arp_ph -= 1.0f;
+            V->arp_i = (V->arp_i + 1) % octs;
         }
-        E.duty_ph = wrap1(E.duty_ph + 0.3f / FK_SR);
-        f = k->f * (float)(1 << E.arp_i) * drift_of(0);
-        adv(&E.ph[0], f);
-        x = w_pulse(E.ph[0], 0.1f + 0.35f * k->r * (0.6f + 0.4f * fk_sin(E.duty_ph)));
-        adv(&E.ph[1], k->f * 0.5f * horde_ratio(1, k->h));
-        sub = w_pulse(E.ph[1], 0.5f);
+        V->duty_ph = wrap1(V->duty_ph + 0.3f / FK_SR);
+        f = k->f * (float)(1 << V->arp_i) * drift_of(0);
+        adv(&V->ph[0], f);
+        x = w_pulse(V->ph[0], 0.1f + 0.35f * k->r * (0.6f + 0.4f * fk_sin(V->duty_ph)));
+        adv(&V->ph[1], k->f * 0.5f * horde_ratio(1, k->h));
+        sub = w_pulse(V->ph[1], 0.5f);
         if (k->c < 0.0f)
             x = x + (x * sub - x) * (-k->c);
         else
@@ -682,13 +704,13 @@ static void a_pit(const ctl *k, float *l, float *r, int n)
     for (i = 0; i < n; i++) {
         int d, cnt = 0, x = 0, on;
         float s = 0.0f;
-        adv(&E.ph[0], k->f * 2.0f * drift_of(0));
-        if (E.ph[0] < k->f * 2.0f / FK_SR)
-            E.arp_i++;                         /* ein Zähler: jede Periode eins weiter */
+        adv(&V->ph[0], k->f * 2.0f * drift_of(0));
+        if (V->ph[0] < k->f * 2.0f / FK_SR)
+            V->arp_i++;                         /* ein Zähler: jede Periode eins weiter */
         for (d = 1; d <= depth; d++) {
             if (!(mask >> (d - 1) & 1))
                 continue;
-            on = ((E.arp_i / d) & 1) ^ (d == 1 ? (E.ph[0] < 0.5f) : 0);
+            on = ((V->arp_i / d) & 1) ^ (d == 1 ? (V->ph[0] < 0.5f) : 0);
             x ^= on;
             s += on ? 1.0f : -1.0f;
             cnt++;
@@ -696,8 +718,8 @@ static void a_pit(const ctl *k, float *l, float *r, int n)
         s = cnt ? s / (float)cnt : 0.0f;
         if (k->c > 0.0f)
             s = s + ((x ? 1.0f : -1.0f) - s) * k->c;
-        adv(&E.ph[1], k->f * 0.5f * horde_ratio(1, k->h));
-        s += w_pulse(E.ph[1], 0.5f) * 0.3f * absf(k->h);
+        adv(&V->ph[1], k->f * 0.5f * horde_ratio(1, k->h));
+        s += w_pulse(V->ph[1], 0.5f) * 0.3f * absf(k->h);
         l[i] = r[i] = s * 0.4f;
     }
 }
@@ -708,22 +730,22 @@ static void a_wind(const ctl *k, float *l, float *r, int n)
 {
     int i, c;
     float clk = 2000.0f + k->r * 40000.0f;
-    E.duty_ph = wrap1(E.duty_ph + (0.03f + k->a * 0.8f) * (float)n / FK_SR);
+    V->duty_ph = wrap1(V->duty_ph + (0.03f + k->a * 0.8f) * (float)n / FK_SR);
     for (c = 0; c < 2; c++) {
-        float fc = k->f * (2.0f + (float)c * horde_ratio(1, k->h)) * fm_exp2f(1.2f * fk_sin(E.duty_ph + (float)c * 0.25f));
+        float fc = k->f * (2.0f + (float)c * horde_ratio(1, k->h)) * fm_exp2f(1.2f * fk_sin(V->duty_ph + (float)c * 0.25f));
         float g = clampf(TAU * fc / FK_SR, 0.001f, 0.9f), q = 0.08f + 0.12f * (1.0f - absf(k->c));
         float *o = c ? r : l;
         for (i = 0; i < n; i++) {
-            float x = w_noise(&E.nz[c], clk, k->c > 0.6f), hp, bp, lp;
-            lp = E.f_lp[c][1] + g * E.f_lp[c][0];
-            hp = x - lp - q * E.f_lp[c][0];
-            bp = g * hp + E.f_lp[c][0];
-            E.f_lp[c][0] = bp;
-            E.f_lp[c][1] = lp;
+            float x = w_noise(&V->nz[c], clk, k->c > 0.6f), hp, bp, lp;
+            lp = V->bp[c][1] + g * V->bp[c][0];
+            hp = x - lp - q * V->bp[c][0];
+            bp = g * hp + V->bp[c][0];
+            V->bp[c][0] = bp;
+            V->bp[c][1] = lp;
             o[i] = clampf(bp * 0.5f, -1.0f, 1.0f);
         }
-        E.f_lp[c][0] = fm_flush(E.f_lp[c][0]);
-        E.f_lp[c][1] = fm_flush(E.f_lp[c][1]);
+        V->bp[c][0] = fm_flush(V->bp[c][0]);
+        V->bp[c][1] = fm_flush(V->bp[c][1]);
     }
 }
 
@@ -737,19 +759,19 @@ static void a_spell(const ctl *k, float *l, float *r, int n)
     float rate = 1.0f + k->sp * 0.12f;
     for (i = 0; i < n; i++) {
         float f, x;
-        E.arp_ph += rate / FK_SR;
-        if (E.arp_ph >= 1.0f) {
-            E.arp_ph -= 1.0f;
-            E.step_note = SC[s][(int)(rng_f(&E.rng) * (2.0f + k->a * 4.99f))];
+        V->arp_ph += rate / FK_SR;
+        if (V->arp_ph >= 1.0f) {
+            V->arp_ph -= 1.0f;
+            V->step_note = SC[s][(int)(rng_f(&E.rng) * (2.0f + k->a * 4.99f))];
             if (rng_f(&E.rng) < absf(k->c) * 0.6f)
-                E.step_note += k->c > 0.0f ? 12 : -12;
+                V->step_note += k->c > 0.0f ? 12 : -12;
         }
-        f = k->f * fm_exp2f((float)E.step_note / 12.0f) * drift_of(0);
-        adv(&E.ph[0], f);
-        x = k->r < 0.5f ? w_pulse(E.ph[0], 0.125f + k->r * 0.6f) : w_tri4(E.ph[0]);
-        adv(&E.ph[1], k->f * 0.5f * horde_ratio(1, k->h));
-        l[i] = (x * 0.7f + w_tri4(E.ph[1]) * 0.3f) * 0.45f;
-        r[i] = (x * 0.6f + w_tri4(E.ph[1]) * 0.4f) * 0.45f;
+        f = k->f * fm_exp2f((float)V->step_note / 12.0f) * drift_of(0);
+        adv(&V->ph[0], f);
+        x = k->r < 0.5f ? w_pulse(V->ph[0], 0.125f + k->r * 0.6f) : w_tri4(V->ph[0]);
+        adv(&V->ph[1], k->f * 0.5f * horde_ratio(1, k->h));
+        l[i] = (x * 0.7f + w_tri4(V->ph[1]) * 0.3f) * 0.45f;
+        r[i] = (x * 0.6f + w_tri4(V->ph[1]) * 0.4f) * 0.45f;
     }
 }
 
@@ -788,9 +810,11 @@ void fk_render(float *l, float *r, int n)
         E.algo_next = -1;
         E.xf_dir = 1.0f;
         reseed(E.raw[P_FATE]);
-        for (i = 0; i < NV; i++)
-            E.ph[i] = E.ph2[i] = 0.0f;
-        E.arp_i = 0;
+        for (c = 0; c < 2; c++) {
+            for (i = 0; i < NV; i++)
+                E.vs[c].ph[i] = E.vs[c].ph2[i] = 0.0f;
+            E.vs[c].arp_i = 0;
+        }
     }
     E.xf = clampf(E.xf, 0.0f, 1.0f);
 #define B(p) ((E.sm[p] - 0.5f) * 2.0f)
@@ -800,7 +824,8 @@ void fk_render(float *l, float *r, int n)
     k.h = absf(k.h) < 0.03f ? 0.0f : k.h;
     k.r = E.sm[P_RUNE];
     k.a = E.sm[P_ALCHEMY];
-    k.q = E.sm[P_QUEST];
+    /* die Varianten (Welle, Akkord, Tonleiter) würfelt FATE; QUEST ist der MORPH */
+    k.q = ((float)(E.raw[P_FATE] & 7u) + 0.5f) * 0.125f;
     k.sp = 1.0f + E.sm[P_SPEED] * 59.0f;      /* 1 .. 60 Hz: die Bildrate der alten Spiele ist 50 / 60 */
     /* die Tonhöhe: Gleiten, Vibrato (in der Bildrate, stufig wie im Tracker), PORTAL */
     sm = E.sm[P_CREEP];
@@ -827,21 +852,56 @@ void fk_render(float *l, float *r, int n)
             E.drift[i] = E.wv[i] * 70.0f * w * w;
         k.r = clampf(k.r + E.wv[4] * 0.4f * w, 0.0f, 0.999f);   /* die Klangfarbe wandert */
     }
-    ALGO_FN[E.algo](&k, gl, gr, n);
+    {   /* QUEST = MORPH: stufenlos in den nächsten Algorithmus (mit dessen eigenen Reglern); dazwischen klingen beide */
+        static const float GAIN[FK_NALGO] = {1.0f, 1.4f, 1.3f, 1.65f, 1.55f, 1.6f, 2.6f, 1.25f,
+                                             1.4f, 1.6f, 2.2f, 1.75f, 1.2f, 1.15f, 1.05f, 1.3f};
+        static float bl[FK_BLOCK_MAX], br[FK_BLOCK_MAX];
+        float m = E.sm[P_QUEST], ga, gb;
+        int nx = (E.algo + 1) % FK_NALGO;
+        ctl kb = k;
+        for (i = 0; i < 4; i++)
+            E.msm[i] += ((float)E.mraw[i] * (1.0f / 127.0f) - E.msm[i]) * 0.15f;
+        kb.c = (E.msm[0] - 0.5f) * 2.0f;
+        kb.h = (E.msm[1] - 0.5f) * 2.0f;
+        kb.c = absf(kb.c) < 0.03f ? 0.0f : kb.c;
+        kb.h = absf(kb.h) < 0.03f ? 0.0f : kb.h;
+        kb.r = clampf(E.msm[2] + E.wv[4] * 0.4f * E.sm[P_WANDER], 0.0f, 0.999f);
+        kb.a = E.msm[3];
+        ga = fm_sqrtf(1.0f - m) * GAIN[E.algo];               /* gleiche Leistung */
+        gb = fm_sqrtf(m) * GAIN[nx];
+        if (m < 0.004f) {
+            ga = GAIN[E.algo];
+            gb = 0.0f;
+        } else if (m > 0.996f) {
+            ga = 0.0f;
+            gb = GAIN[nx];
+        }
+        if (ga > 0.0f) {
+            V = &E.vs[0];
+            ALGO_FN[E.algo](&k, gl, gr, n);
+        } else {
+            fk_zero(gl, (uint32_t)n * sizeof(float));
+            fk_zero(gr, (uint32_t)n * sizeof(float));
+        }
+        if (gb > 0.0f) {
+            V = &E.vs[1];
+            ALGO_FN[nx](&kb, bl, br, n);
+            for (i = 0; i < n; i++) {
+                gl[i] = gl[i] * ga + bl[i] * gb;
+                gr[i] = gr[i] * ga + br[i] * gb;
+            }
+        } else {
+            for (i = 0; i < n; i++) {
+                gl[i] *= ga;
+                gr[i] *= ga;
+            }
+        }
+    }
     {   /* WANDER: das Panorama wandert, der Klang atmet */
         float w = E.sm[P_WANDER], pan = E.wv[6] * 0.6f * w, br = 1.0f - 0.35f * w * (0.5f + 0.5f * E.wv[7]);
         for (i = 0; i < n; i++) {
             gl[i] *= (1.0f - pan) * br;
             gr[i] *= (1.0f + pan) * br;
-        }
-    }
-    {   /* gleich laut: je Algorithmus ein Ausgleich (gemessen) */
-        static const float GAIN[FK_NALGO] = {1.0f, 1.4f, 1.3f, 1.65f, 1.55f, 1.6f, 2.6f, 1.25f,
-                                             1.4f, 1.6f, 2.2f, 1.75f, 1.2f, 1.15f, 1.05f, 1.3f};
-        float g = GAIN[E.algo];
-        for (i = 0; i < n; i++) {
-            gl[i] *= g;
-            gr[i] *= g;
         }
     }
     /* die Hüllkurve */

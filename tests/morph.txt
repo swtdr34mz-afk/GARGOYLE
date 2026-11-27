@@ -1,0 +1,293 @@
+# GARGOYLE: QUEST = MORPH into the next algorithm, for all 16 (half and full)
+wait 4500
+tap PLAY
+expect hold 1
+key 0 down 100
+wait 100
+key 0 up
+expect engine_algo 0
+turn ALGO 16 40
+wait 600
+wav m1_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m1_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127
+shot morph1.png
+turn ALGO -200 5
+wait 100
+turn PRESET 1
+wait 200
+expect engine_algo 1
+turn ALGO 16 40
+wait 600
+wav m2_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m2_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127
+turn ALGO -200 5
+wait 100
+turn PRESET 1
+wait 200
+expect engine_algo 2
+turn ALGO 16 40
+wait 600
+wav m3_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m3_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127
+turn ALGO -200 5
+wait 100
+turn PRESET 1
+wait 200
+expect engine_algo 3
+turn ALGO 16 40
+wait 600
+wav m4_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m4_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127
+turn ALGO -200 5
+wait 100
+turn PRESET 1
+wait 200
+expect engine_algo 4
+turn ALGO 16 40
+wait 600
+wav m5_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m5_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127
+turn ALGO -200 5
+wait 100
+turn PRESET 1
+wait 200
+expect engine_algo 5
+turn ALGO 16 40
+wait 600
+wav m6_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m6_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127
+turn ALGO -200 5
+wait 100
+turn PRESET 1
+wait 200
+expect engine_algo 6
+turn ALGO 16 40
+wait 600
+wav m7_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m7_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127
+turn ALGO -200 5
+wait 100
+turn PRESET 1
+wait 200
+expect engine_algo 7
+turn ALGO 16 40
+wait 600
+wav m8_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m8_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127
+turn ALGO -200 5
+wait 100
+turn PRESET 1
+wait 200
+expect engine_algo 8
+turn ALGO 16 40
+wait 600
+wav m9_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m9_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127
+shot morph9.png
+turn ALGO -200 5
+wait 100
+turn PRESET 1
+wait 200
+expect engine_algo 9
+turn ALGO 16 40
+wait 600
+wav m10_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m10_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127
+turn ALGO -200 5
+wait 100
+turn PRESET 1
+wait 200
+expect engine_algo 10
+turn ALGO 16 40
+wait 600
+wav m11_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m11_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127
+turn ALGO -200 5
+wait 100
+turn PRESET 1
+wait 200
+expect engine_algo 11
+turn ALGO 16 40
+wait 600
+wav m12_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m12_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127
+turn ALGO -200 5
+wait 100
+turn PRESET 1
+wait 200
+expect engine_algo 12
+turn ALGO 16 40
+wait 600
+wav m13_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m13_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127
+turn ALGO -200 5
+wait 100
+turn PRESET 1
+wait 200
+expect engine_algo 13
+turn ALGO 16 40
+wait 600
+wav m14_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m14_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127
+turn ALGO -200 5
+wait 100
+turn PRESET 1
+wait 200
+expect engine_algo 14
+turn ALGO 16 40
+wait 600
+wav m15_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m15_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127
+turn ALGO -200 5
+wait 100
+turn PRESET 1
+wait 200
+expect engine_algo 15
+turn ALGO 16 40
+wait 600
+wav m16_half.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+turn ALGO 200 5
+wait 600
+wav m16_full.wav
+wait 1500
+wavstop
+expect peak_db_min -40
+expect scan 127

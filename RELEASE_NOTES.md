@@ -1,11 +1,7 @@
-**GARGOYLE v0.1.0** – an 8-bit drone synth for the M-VAVE FM-1, in a dungeon.
+**GARGOYLE v0.1.1**
 
-- 16 algorithms from the old sound chips: NES, Game Boy (pulse + wave channel), C64 SID, Atari POKEY, AdLib FM, PC speaker, divider logic, noise and more
-- made for drones and ambient: AURA (resonator that turns chip tones into a floating surface), WANDER, CREEP, an echo that turns into fog
-- one knob, one parameter: SUMMON, ECHO, RITUAL, LORE, SPELL
-- WRATH on SELECT: one macro for live play
-- GROOVE: ten styles of chiptune dungeon percussion, tuned to the drone, with pump and MIDI clock
-- every page its own room and monster, start screen with burning torches
-- HOLD, FREEZE, FATE (dice), 8 snapshots, battery as three hearts
+- QUEST is now a **MORPH**: the ALGORITHM knob blends smoothly from the current algorithm into the next one (TORCHLIGHT → CRYPT CHOIR … SPELLBOOK → TORCHLIGHT). The next one plays with its own knob settings; in between both chips sound at once. Fully left = off.
+- the variants (Game Boy wave, GOBLIN and TREASURE chords, SPELLBOOK scale) are now rolled with FATE (REC)
+- WIND OF ABYSS has its own filter now (it no longer shares one with TORCH)
 
-Install: download the .fwsc below and flash it with the M-Flasher.
+Install: download the .fwsc below and flash it with the M-Flasher. Your sounds and snapshots stay; only QUEST starts at off.

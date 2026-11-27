@@ -76,8 +76,10 @@ Bipolare Regler rasten in der Mitte zwei Rasten lang ein.
 | 15 | WIND OF ABYSS | Rauschen durch einen wandernden Bandpass | wie schnell der Sturm |
 | 16 | SPELLBOOK | zufällige Töne einer Tonleiter | wie weit sie springen |
 
-**ALGORITHM** dreht QUEST: die Varianten (Akkord, Tonleiter, Tabelle …), grob. **REC** = FATE: würfelt
-Tabellen, Verstimmungen und Muster neu (1 s gehalten: auch RUNE und ALCHEMY). **SEQ** 1 s: zurück auf den Werksklang.
+**ALGORITHM** dreht QUEST, den **MORPH**: stufenlos vom Algorithmus in den nächsten (TORCHLIGHT → CRYPT CHOIR …,
+SPELLBOOK → TORCHLIGHT). Der nächste klingt dabei mit seinen eigenen Reglern, dazwischen klingen beide; ganz links
+ist der MORPH aus. **REC** = FATE: würfelt Tabellen, Verstimmungen, Muster und die Varianten (Welle, Akkord,
+Tonleiter bei CRYPT CHOIR, GOBLIN CHORDS, TREASURE, SPELLBOOK) neu (1 s gehalten: auch RUNE und ALCHEMY). **SEQ** 1 s: zurück auf den Werksklang.
 
 ## WRATH (SELECT)
 
