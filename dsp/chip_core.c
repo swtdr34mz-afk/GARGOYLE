@@ -1,0 +1,951 @@
+/* SPDX-License-Identifier: MPL-2.0
+ * Copyright (C) 2026 swtdr34mz (GARGOYLE) */
+/* GARGOYLE – der Klangkern (siehe chip_core.h). Eine Übersetzungseinheit: der GROOVE (garg_groove.c) ist am Ende
+ * eingebunden. Alle Klänge hier synthetisiert, nach den Prinzipien der alten Chips (keine Kopie eines Chips). */
+#include <string.h>
+#include "chip_core.h"
+#include "fastmath.h"
+
+#define TAU 6.2831853f
+static inline float clampf(float x, float lo, float hi) { return x < lo ? lo : x > hi ? hi : x; }
+static inline float absf(float x) { return x < 0.0f ? -x : x; }
+static inline float wrap1(float p) { return p - (float)(int)p; }
+static inline uint32_t rng_u(uint32_t *s)
+{
+    uint32_t x = *s;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    return *s = x;
+}
+static inline float rng_f(uint32_t *s) { return (float)(rng_u(s) >> 8) * (1.0f / 16777216.0f); }
+static inline float softc(float x) { return x / (1.0f + absf(x) * 0.6f) * 1.3f; }
+static inline float fk_sin(float ph)          /* sin(2 pi ph), eine Näherung (Parabel, verfeinert): reicht für FM */
+{
+    float x = wrap1(ph + 0.5f) * 2.0f - 1.0f, y = 4.0f * x * (1.0f - absf(x));
+    return -(y + 0.225f * y * (absf(y) - 1.0f));
+}
+static void fk_zero(void *d, uint32_t n) { memset(d, 0, n); }
+
+/* ---- die Bausteine der alten Chips ---- */
+static inline float w_pulse(float ph, float duty) { return ph < duty ? 1.0f : -1.0f; }
+static inline float w_tri4(float ph)          /* das Dreieck des NES: 32 Stufen, 4 Bit */
+{
+    int i = (int)(ph * 32.0f) & 31, v = i < 16 ? 15 - i : i - 16;
+    return (float)v * (2.0f / 15.0f) - 1.0f;
+}
+static inline float w_saw4(float ph) { return (float)((int)(ph * 16.0f) & 15) * (2.0f / 15.0f) - 1.0f; }
+/* ein Rausch-Generator wie im NES: ein 15-Bit-Schieberegister, getaktet mit hz; short: der kurze Modus (93 Schritte,
+ * fast ein Ton) */
+typedef struct { uint16_t r; float acc; float out; } lfsr_t;
+static inline float w_noise(lfsr_t *n, float hz, int shortm)
+{
+    n->acc += hz * (1.0f / FK_SR);
+    while (n->acc >= 1.0f) {
+        uint16_t b = (uint16_t)((n->r ^ (n->r >> (shortm ? 6 : 1))) & 1u);
+        n->r = (uint16_t)((n->r >> 1) | (b << 14));
+        n->acc -= 1.0f;
+        n->out = (n->r & 1u) ? 1.0f : -1.0f;
+    }
+    return n->out;
+}
+/* POKEY: Polynom-Zähler (4, 5, 9, 17 Bit), mit einem Teiler abgetastet: "unreine", knurrende Töne */
+typedef struct { uint32_t p4, p5, p9, p17; float acc; float out; int t; } poky_t;
+static inline float w_poky(poky_t *k, float hz, int mode)
+{
+    k->acc += hz * 2.0f * (1.0f / FK_SR);
+    while (k->acc >= 1.0f) {
+        k->acc -= 1.0f;
+        k->p4 = ((k->p4 << 1) | (((k->p4 >> 3) ^ (k->p4 >> 2)) & 1u)) & 15u;
+        k->p5 = ((k->p5 << 1) | (((k->p5 >> 4) ^ (k->p5 >> 2)) & 1u)) & 31u;
+        k->p9 = ((k->p9 << 1) | (((k->p9 >> 8) ^ (k->p9 >> 4)) & 1u)) & 511u;
+        k->p17 = ((k->p17 << 1) | (((k->p17 >> 16) ^ (k->p17 >> 11)) & 1u)) & 131071u;
+        switch (mode) {                       /* die Verzerrungen */
+        case 0: k->t ^= 1; break;                                     /* rein */
+        case 1: if (k->p5 & 1u) k->t ^= 1; break;                     /* 5 Bit, dann Rechteck */
+        case 2: k->t = (int)(k->p4 & 1u); break;                      /* 4 Bit: Brummen */
+        case 3: if (k->p5 & 1u) k->t = (int)(k->p4 & 1u); break;      /* 5 + 4 */
+        case 4: k->t = (int)(k->p9 & 1u); break;                      /* 9 Bit */
+        default: k->t = (int)(k->p17 & 1u); break;                    /* 17 Bit: Rauschen */
+        }
+        k->out = k->t ? 1.0f : -1.0f;
+    }
+    return k->out;
+}
+/* eine 4-Bit-Wellentabelle wie im Game Boy: 32 Werte 0..15 */
+static inline float w_wt(const uint8_t *t, float ph) { return (float)t[(int)(ph * 32.0f) & 31] * (2.0f / 15.0f) - 1.0f; }
+
+/* ---- der Zustand ---- */
+#define NV 4
+static struct {
+    fk_mem m;
+    int algo, algo_next;
+    float xf, xf_dir;                         /* die Blende beim Wechsel */
+    uint8_t raw[FK_NP];
+    float sm[FK_NP];                          /* geglättet, 0..1 */
+    float v_curse, v_horde, v_rune, v_alch;   /* bipolar: -1..1 / 0..1 */
+    /* die Noten */
+    int note, gate, hold, held[16], nheld;
+    float vel, pitch, target, bend, glide;
+    float env, atk, rel;
+    /* die Stimmen */
+    float ph[NV], ph2[NV], duty_ph, drift[NV], dv[NV];
+    lfsr_t nz[NV];
+    poky_t pk[NV];
+    uint8_t wt[4][32];                        /* die Tabellen (FATE würfelt sie) */
+    float fmfb[NV];
+    float arp_ph;                             /* die Arpeggios und Muster (SPEED) */
+    int arp_i, step_note, last_fate, last_quest;
+    float vib_ph, sh_l, sh_r, sh_acc;
+    uint32_t rng;
+    /* das Filter, das Echo */
+    float f_lp[2][2], f_hp[2][2];
+    uint32_t ew;
+    float ed, ed_t, elp[2];
+    int freeze, duck, eco;
+    float duck_g;
+    float lvl, mtr[2];
+    int clip;
+    float dcx[2], dcy[2];
+} E;
+static const float *X_duck, *X_l, *X_r;
+static float X_send;
+
+#include "chip_params.c"
+
+static float mtof(float m) { return 440.0f * fm_exp2f((m - 69.0f) * (1.0f / 12.0f)); }
+
+static void reseed(int s)
+{
+    int t, i;
+    uint32_t r = 0x9E3779B9u ^ (uint32_t)(s * 2654435761u) ^ (uint32_t)E.algo * 40503u;
+    for (t = 0; t < 4; t++) {                 /* die Tabellen: eine weiche Grundform plus gewürfelte Obertöne */
+        float h2 = rng_f(&r), h3 = rng_f(&r), h5 = rng_f(&r) * 0.7f, ph = rng_f(&r);
+        for (i = 0; i < 32; i++) {
+            float x = (float)i / 32.0f;
+            float v = fk_sin(x) + h2 * fk_sin(2.0f * x + ph) + h3 * 0.6f * fk_sin(3.0f * x) + h5 * fk_sin(5.0f * x + ph);
+            v = clampf(v / (1.0f + h2 + h3 * 0.6f + h5), -1.0f, 1.0f);
+            if (t == 3)
+                v = v > 0.0f ? 1.0f : -1.0f;
+            E.wt[t][i] = (uint8_t)clampf(7.5f + v * 7.5f + 0.5f, 0.0f, 15.0f);
+        }
+    }
+    for (i = 0; i < NV; i++) {
+        E.dv[i] = (rng_f(&r) - 0.5f) * 2.0f;
+        E.pk[i].p4 = 5u + (uint32_t)i;
+        E.pk[i].p5 = 9u + (uint32_t)i;
+        E.pk[i].p9 = 77u + (uint32_t)i * 3u;
+        E.pk[i].p17 = 1234u + (uint32_t)i * 777u;
+        E.nz[i].r = (uint16_t)(1u + (rng_u(&r) & 0x7FFEu));
+    }
+    E.rng = r | 1u;
+}
+
+/* ---- die Schnittstelle ---- */
+void fk_init(const fk_mem *m)
+{
+    fk_zero(&E, sizeof E);
+    E.m = *m;
+    fk_zero(E.m.ec[0], FK_EC_N);
+    fk_zero(E.m.ec[1], FK_EC_N);
+    E.algo_next = -1;
+    E.xf = 1.0f;
+    E.xf_dir = 1.0f;
+    E.note = 48;
+    E.pitch = E.target = 48.0f;
+    E.vel = 1.0f;
+    E.rng = 0x1234567u;
+    E.last_fate = -1;
+    E.duck_g = 1.0f;
+    reseed(0);
+}
+void fk_algo(int a)
+{
+    a = a < 0 ? 0 : a >= FK_NALGO ? FK_NALGO - 1 : a;
+    if (a == E.algo && E.algo_next < 0)
+        return;
+    E.algo_next = a;
+    E.xf_dir = -1.0f;
+}
+void fk_params(const uint8_t p[FK_NP]) { memcpy(E.raw, p, FK_NP); }
+
+static void gate_on(void)
+{
+    if (!E.gate && E.env < 0.001f)
+        E.arp_i = 0;
+    E.gate = 1;
+}
+void fk_note_on(int note, int vel)
+{
+    int i;
+    for (i = 0; i < E.nheld; i++)
+        if (E.held[i] == note)
+            break;
+    if (i == E.nheld && E.nheld < 16)
+        E.held[E.nheld++] = note;
+    E.note = note;
+    E.target = (float)note;
+    E.vel = 0.4f + 0.6f * (float)vel / 127.0f;
+    gate_on();
+}
+void fk_note_off(int note)
+{
+    int i, j;
+    for (i = 0; i < E.nheld; i++)
+        if (E.held[i] == note) {
+            for (j = i; j + 1 < E.nheld; j++)
+                E.held[j] = E.held[j + 1];
+            E.nheld--;
+            break;
+        }
+    if (E.nheld) {
+        E.note = E.held[E.nheld - 1];
+        E.target = (float)E.note;
+    } else {
+        E.gate = 0;
+    }
+}
+void fk_hold(int on) { E.hold = on; }
+void fk_all_off(void)
+{
+    E.nheld = 0;
+    E.gate = 0;
+}
+void fk_panic(void)
+{
+    fk_all_off();
+    E.env = 0.0f;
+    fk_zero(E.m.ec[0], FK_EC_N);
+    fk_zero(E.m.ec[1], FK_EC_N);
+}
+void fk_bend(float semis) { E.bend = semis; }
+void fk_freeze(int on) { E.freeze = on; }
+int fk_frozen(void) { return E.freeze; }
+void fk_eco(int on) { E.eco = on; }
+int fk_eco_on(void) { return E.eco; }
+void fk_duck(int on) { E.duck = on; }
+int fk_ducked(void) { return E.duck && E.duck_g <= 0.0f; }
+void fk_ext(const float *duck, const float *xl, const float *xr, float send)
+{
+    X_duck = duck;
+    X_l = xl;
+    X_r = xr;
+    X_send = send;
+}
+
+/* ---- die Algorithmen: je ein Block, Stereo, um 0.5 herum ----
+ * f: die Grundfrequenz (mit Vibrato), c: CURSE (-1..1), h: HORDE (-1..1), r: RUNE (0..1), a: ALCHEMY (0..1),
+ * q: QUEST (0..1), sp: SPEED (Hz, für Arpeggios und Muster) */
+typedef struct { float f, c, h, r, a, q, sp, wand; } ctl;
+
+/* die Stimmen-Frequenzen nach HORDE: links Oktaven darunter, rechts Verstimmung (mit FATE gewürfelt) */
+static float horde_ratio(int i, float h)
+{
+    if (!i)
+        return 1.0f;
+    if (h < 0.0f) {
+        static const float OCT[NV] = {1.0f, 0.5f, 2.0f, 0.25f};
+        return 1.0f + (OCT[i] - 1.0f) * clampf(-h * 1.4f, 0.0f, 1.0f);
+    }
+    return fm_exp2f(E.dv[i] * h * h * 0.06f + (float)(i & 1) * h * 0.004f);
+}
+static float drift_of(int i) { return fm_exp2f(E.drift[i] * (1.0f / 1200.0f)); }
+static inline void adv(float *ph, float hz) { *ph = wrap1(*ph + hz * (1.0f / FK_SR)); }
+
+/* 1 TORCHLIGHT: zwei Pulswellen (NES), die Pulsbreite wandert; CURSE links Ring, rechts Sync */
+static void a_torch(const ctl *k, float *l, float *r, int n)
+{
+    int i;
+    float d0 = 0.06f + 0.44f * k->r, sw = 0.05f + k->a * 2.5f;
+    for (i = 0; i < n; i++) {
+        float f1 = k->f * drift_of(0), f2 = k->f * horde_ratio(1, k->h) * drift_of(1), a, b, d2;
+        E.duty_ph = wrap1(E.duty_ph + sw / FK_SR);
+        d2 = 0.06f + 0.44f * (0.5f + 0.5f * fk_sin(E.duty_ph)) * (0.3f + 0.7f * k->r);
+        adv(&E.ph[0], f1);
+        if (k->c > 0.0f) {                    /* Sync: die zweite startet mit der ersten neu, höher gestimmt */
+            float ratio = 1.0f + k->c * 3.0f;
+            E.ph2[1] = wrap1(E.ph2[1] + f1 * ratio / FK_SR);
+            if (E.ph[0] < f1 / FK_SR)
+                E.ph2[1] = 0.0f;
+            b = w_pulse(E.ph2[1], d2);
+        } else {
+            adv(&E.ph[1], f2);
+            b = w_pulse(E.ph[1], d2);
+        }
+        a = w_pulse(E.ph[0], d0);
+        if (k->c < 0.0f)
+            b = b + (a * b - b) * (-k->c);
+        l[i] = (a * 0.6f + b * 0.4f) * 0.45f;
+        r[i] = (a * 0.4f + b * 0.6f) * 0.45f;
+    }
+}
+
+/* 2 CRYPT CHOIR: vier Stimmen aus 4-Bit-Tabellen (Game Boy); RUNE blendet zwischen den Tabellen (in Stufen),
+ * ALCHEMY: die Lage der Stimmen (Einklang, Oktaven, Quinten) */
+static void a_crypt(const ctl *k, float *l, float *r, int n)
+{
+    static const float LAY[3][NV] = {{1.0f, 1.0f, 1.0f, 1.0f}, {1.0f, 0.5f, 2.0f, 1.0f}, {1.0f, 1.5f, 0.75f, 2.0f}};
+    int i, v, lay = k->a < 0.33f ? 0 : k->a < 0.66f ? 1 : 2, t0 = (int)(k->q * 3.99f);
+    float m = k->r * 3.0f;
+    int ta = (int)m;
+    float tf = m - (float)ta;
+    for (i = 0; i < n; i++) {
+        float sl = 0.0f, sr = 0.0f;
+        for (v = 0; v < NV; v++) {
+            float f = k->f * LAY[lay][v] * horde_ratio(v, k->h) * drift_of(v), x;
+            int a = (t0 + ta + v) & 3, b = (t0 + ta + v + 1) & 3;
+            adv(&E.ph[v], f);
+            if (k->c != 0.0f && v)           /* CURSE: Stimme 1 verschiebt die Lesestelle der anderen */
+                x = w_wt(E.wt[a], wrap1(E.ph[v] + k->c * 0.5f * w_wt(E.wt[0], E.ph[0])));
+            else
+                x = w_wt(E.wt[a], E.ph[v]);
+            x = x + (w_wt(E.wt[b], E.ph[v]) - x) * (float)((int)(tf * 4.0f)) * 0.25f;   /* 4 Stufen */
+            sl += x * (v & 1 ? 0.35f : 0.65f);
+            sr += x * (v & 1 ? 0.65f : 0.35f);
+        }
+        l[i] = sl * 0.22f;
+        r[i] = sr * 0.22f;
+    }
+}
+
+/* die Akkorde (Halbtöne über dem Grundton), für die Arpeggios */
+static const int8_t CHORD[8][4] = {{0, 3, 7, 12}, {0, 4, 7, 12}, {0, 5, 7, 12}, {0, 3, 6, 9},
+                                   {0, 7, 12, 19}, {0, 3, 7, 10}, {0, 4, 7, 11}, {0, 2, 7, 14}};
+
+/* 3 GOBLIN CHORDS: ein Arpeggio so schnell, dass es wie ein Akkord klingt (C64); QUEST: der Akkord, RUNE: die Welle,
+ * ALCHEMY: über wie viele Oktaven, HORDE: eine zweite Stimme */
+static void a_goblin(const ctl *k, float *l, float *r, int n)
+{
+    int i, ch = (int)(k->q * 7.99f), span = 1 + (int)(k->a * 2.99f);
+    float rate = 18.0f + k->sp * 3.0f;
+    for (i = 0; i < n; i++) {
+        int st;
+        float f, x, y;
+        E.arp_ph += rate / FK_SR;
+        if (E.arp_ph >= 1.0f) {
+            E.arp_ph -= 1.0f;
+            E.arp_i = (E.arp_i + 1) % (4 * span);
+        }
+        st = CHORD[ch][E.arp_i & 3] + 12 * (E.arp_i / 4);
+        f = k->f * fm_exp2f((float)st / 12.0f) * drift_of(0);
+        adv(&E.ph[0], f);
+        x = k->r < 0.33f ? w_pulse(E.ph[0], 0.125f + k->r) : k->r < 0.66f ? w_saw4(E.ph[0]) : w_tri4(E.ph[0]);
+        adv(&E.ph[1], f * horde_ratio(1, k->h) * 0.5f);
+        y = w_pulse(E.ph[1], 0.5f);
+        if (k->c < 0.0f)
+            x = x + (x * y - x) * (-k->c);
+        else if (k->c > 0.0f)
+            x = x + (y - x) * k->c * 0.5f;
+        l[i] = (x * 0.7f + y * 0.3f * absf(k->h)) * 0.42f;
+        r[i] = (x * 0.7f + y * 0.3f * absf(k->h)) * 0.42f;
+    }
+}
+
+/* 4 DRAGON BREATH: der Rausch-Generator im kurzen Modus (fast ein Ton) mit einer Pulswelle darunter;
+ * RUNE: wie hoch das Rauschen getaktet wird, ALCHEMY: Rauschen / Puls, CURSE: der lange Modus mischt sich hinein */
+static void a_breath(const ctl *k, float *l, float *r, int n)
+{
+    int i;
+    for (i = 0; i < n; i++) {
+        float clk = k->f * (8.0f + k->r * 120.0f), a = w_noise(&E.nz[0], clk, 1), b = w_noise(&E.nz[1], clk * horde_ratio(1, k->h), 1);
+        float p;
+        adv(&E.ph[2], k->f * 0.5f * drift_of(2));
+        p = w_pulse(E.ph[2], 0.25f);
+        if (k->c > 0.0f) {
+            a = a + (w_noise(&E.nz[2], clk * 2.0f, 0) - a) * k->c;
+            b = b + (w_noise(&E.nz[3], clk * 2.1f, 0) - b) * k->c;
+        } else if (k->c < 0.0f) {
+            a *= 1.0f + (p - 1.0f) * (-k->c);
+            b *= 1.0f + (p - 1.0f) * (-k->c);
+        }
+        l[i] = (a * k->a + p * (1.0f - k->a)) * 0.38f;
+        r[i] = (b * k->a + p * (1.0f - k->a)) * 0.38f;
+    }
+}
+
+/* 5 PC SPEAKER: nur 1 Bit. Drei Töne durch schnelles Umschalten (die Mehrstimmigkeit der DOS-Spiele); RUNE: die
+ * Pulsbreite, ALCHEMY: "RealSound" (eine Sinusschwingung über die Pulsbreite), HORDE / CURSE: die Intervalle */
+static void a_speaker(const ctl *k, float *l, float *r, int n)
+{
+    int i;
+    float i1 = fm_exp2f((7.0f + k->h * 5.0f) / 12.0f), i2 = fm_exp2f((12.0f + k->c * 7.0f) / 12.0f);
+    float rate = 30.0f + k->sp * 4.0f;
+    for (i = 0; i < n; i++) {
+        float f, out;
+        int sel;
+        E.arp_ph += rate / FK_SR;
+        if (E.arp_ph >= 1.0f) {
+            E.arp_ph -= 1.0f;
+            E.arp_i = (E.arp_i + 1) % 3;
+        }
+        sel = E.arp_i;
+        f = k->f * (sel == 0 ? 1.0f : sel == 1 ? i1 : i2) * drift_of(sel);
+        adv(&E.ph[0], f);
+        if (k->a > 0.02f) {                   /* RealSound: die Pulsbreite folgt einem Sinus, mit 15 kHz getaktet */
+            float s = fk_sin(E.ph[0]) * 0.5f + 0.5f;
+            adv(&E.ph[1], 15000.0f);
+            out = E.ph[1] < (s * k->a + (1.0f - k->a) * (0.05f + 0.45f * k->r)) ? 1.0f : -1.0f;
+            out = E.ph[0] < 0.5f || k->a > 0.5f ? out : -out;
+        } else {
+            out = w_pulse(E.ph[0], 0.05f + 0.45f * k->r);
+        }
+        l[i] = r[i] = out * 0.32f;
+    }
+}
+
+/* 6 POKEY CURSE: die Polynom-Zähler des Atari; RUNE: die Verzerrung (rein .. 17 Bit), zwei Kanäle (HORDE),
+ * ALCHEMY: der zweite Kanal eine Oktave tiefer im anderen Modus, CURSE: die Kanäle verknüpft (XOR / Hochpass-Trick) */
+static void a_pokey(const ctl *k, float *l, float *r, int n)
+{
+    int i, m1 = (int)(k->r * 5.99f), m2 = (m1 + 1 + (int)(k->a * 4.0f)) % 6;
+    for (i = 0; i < n; i++) {
+        float a = w_poky(&E.pk[0], k->f * drift_of(0), m1);
+        float b = w_poky(&E.pk[1], k->f * horde_ratio(1, k->h) * (k->a > 0.5f ? 0.5f : 1.0f) * drift_of(1), m2), x, y;
+        if (k->c > 0.0f) {                    /* XOR */
+            float xo = (a > 0.0f) != (b > 0.0f) ? 1.0f : -1.0f;
+            x = a + (xo - a) * k->c;
+            y = b + (xo - b) * k->c;
+        } else if (k->c < 0.0f) {             /* der "Hochpass": der zweite Kanal tastet den ersten ab */
+            if (b > 0.0f)
+                E.sh_l = a;
+            x = a + (E.sh_l - a) * (-k->c);
+            y = b;
+        } else {
+            x = a;
+            y = b;
+        }
+        l[i] = (x * 0.6f + y * 0.4f) * 0.34f;
+        r[i] = (x * 0.4f + y * 0.6f) * 0.34f;
+    }
+}
+
+/* 7 SID RITUAL: zwei Oszillatoren wie im C64; RUNE: die Welle (Dreieck .. Säge .. Puls), ALCHEMY: das Verhältnis
+ * des zweiten, CURSE links Ringmodulation, rechts Sync */
+static void a_sid(const ctl *k, float *l, float *r, int n)
+{
+    static const float RAT[8] = {0.5f, 1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 4.0f, 5.0f};
+    int i;
+    float ratio = RAT[(int)(k->a * 7.99f)];
+    for (i = 0; i < n; i++) {
+        float f1 = k->f * drift_of(0), f2 = f1 * ratio * horde_ratio(1, k->h), a, b, c3;
+        adv(&E.ph[0], f1);
+        adv(&E.ph[1], f2);
+        if (k->c > 0.0f && E.ph[0] < f1 / FK_SR)
+            E.ph[1] = wrap1(E.ph[1] * (1.0f - k->c));
+        a = k->r < 0.33f ? w_tri4(E.ph[0]) : k->r < 0.66f ? w_saw4(E.ph[0]) : w_pulse(E.ph[0], 0.5f - (k->r - 0.66f));
+        b = w_tri4(E.ph[1]);
+        if (k->c < 0.0f)                      /* Ring: die Welle des ersten mit dem Vorzeichen des zweiten */
+            a = a + ((E.ph[1] < 0.5f ? a : -a) - a) * (-k->c);
+        adv(&E.ph[2], f1 * 1.003f * horde_ratio(2, k->h));
+        c3 = w_saw4(E.ph[2]);
+        l[i] = (a * 0.55f + b * 0.25f + c3 * 0.2f * absf(k->h)) * 0.5f;
+        r[i] = (a * 0.45f + b * 0.35f + c3 * 0.2f * absf(k->h)) * 0.5f;
+    }
+}
+
+/* 8 ADLIB HALL: zwei Operatoren FM wie auf der AdLib-Karte; RUNE: die Modulationstiefe, ALCHEMY: das Verhältnis,
+ * CURSE links die Rückkopplung, rechts die Wellen der Karte (halber Sinus, Betrag, Viertel) */
+static float opl_wave(float ph, int w)
+{
+    float s = fk_sin(ph);
+    switch (w) {
+    case 1: return s > 0.0f ? s : 0.0f;              /* halber Sinus */
+    case 2: return absf(s);                           /* Betrag */
+    case 3: return wrap1(ph * 2.0f) < 0.5f ? absf(s) : 0.0f;   /* Viertel */
+    default: return s;
+    }
+}
+static void a_adlib(const ctl *k, float *l, float *r, int n)
+{
+    static const float MUL[8] = {0.5f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 7.0f, 10.0f};
+    int i, w = k->c > 0.0f ? (int)(k->c * 3.99f) : 0;
+    float mul = MUL[(int)(k->a * 7.99f)], idx = k->r * 3.0f, fb = k->c < 0.0f ? -k->c * 0.9f : 0.0f;
+    for (i = 0; i < n; i++) {
+        float s = 0.0f;
+        int v;
+        for (v = 0; v < 2; v++) {
+            float f = k->f * horde_ratio(v, k->h) * drift_of(v), m;
+            adv(&E.ph2[v], f * mul);
+            m = opl_wave(wrap1(E.ph2[v] + E.fmfb[v] * fb), w);
+            E.fmfb[v] = m;
+            adv(&E.ph[v], f);
+            s += opl_wave(wrap1(E.ph[v] + m * idx * 0.5f), w ? (w + v) & 3 : 0) * (v ? 0.4f : 0.6f);
+        }
+        s = (float)(int)(s * 32.0f) * (1.0f / 32.0f);   /* die Karte rechnete grob: 6 Bit Pegel */
+        l[i] = r[i] = s * 0.5f;
+    }
+}
+
+/* 9 BEHOLDER: drei Pulswellen mit Vibrato aus Tabellen wie in Tracker-Musik; ALCHEMY: wie wild die Vibratos */
+static void a_beholder(const ctl *k, float *l, float *r, int n)
+{
+    static const float VT[8] = {0.0f, 0.7f, 1.0f, 0.7f, 0.0f, -0.7f, -1.0f, -0.7f};
+    int i, v;
+    for (i = 0; i < n; i++) {
+        float sl = 0.0f, sr = 0.0f;
+        for (v = 0; v < 3; v++) {
+            float vr = (4.0f + (float)v * 2.3f) * (0.3f + k->sp * 0.05f), f, x;
+            E.ph2[v] = wrap1(E.ph2[v] + vr / FK_SR);
+            f = k->f * horde_ratio(v, k->h) * drift_of(v) * fm_exp2f(VT[(int)(E.ph2[v] * 8.0f) & 7] * k->a * 0.5f / 12.0f);
+            adv(&E.ph[v], f);
+            x = w_pulse(E.ph[v], 0.08f + 0.42f * k->r * (1.0f - 0.3f * (float)v));
+            if (k->c < 0.0f && v)
+                x = x + (x * w_pulse(E.ph[0], 0.5f) - x) * (-k->c);
+            sl += x * (v == 1 ? 0.2f : 0.4f);
+            sr += x * (v == 2 ? 0.2f : 0.4f);
+        }
+        l[i] = sl * 0.45f;
+        r[i] = sr * 0.45f;
+    }
+}
+
+/* 10 TREASURE: Glöckchen aus FM, immer wieder angeschlagen (SPEED), auf den Tönen eines Akkords (QUEST) */
+static void a_treasure(const ctl *k, float *l, float *r, int n)
+{
+    int i, ch = (int)(k->q * 7.99f);
+    float rate = 2.0f + k->sp * 0.6f, ratio = 1.4f + k->a * 2.6f;
+    for (i = 0; i < n; i++) {
+        float f, m, s;
+        E.arp_ph += rate / FK_SR;
+        if (E.arp_ph >= 1.0f) {
+            E.arp_ph -= 1.0f;
+            E.arp_i = (int)(rng_u(&E.rng) & 7u);
+            E.sh_acc = 1.0f;                  /* angeschlagen */
+        }
+        E.sh_acc *= 0.99985f - 0.0003f * (1.0f - k->r);
+        f = k->f * 2.0f * fm_exp2f((float)(CHORD[ch][E.arp_i & 3] + 12 * (E.arp_i >> 2)) / 12.0f) * drift_of(0);
+        adv(&E.ph2[0], f * ratio);
+        m = fk_sin(E.ph2[0]) * (1.0f + 2.0f * k->r) * E.sh_acc;
+        adv(&E.ph[0], f);
+        s = fk_sin(wrap1(E.ph[0] + m * 0.3f)) * E.sh_acc;
+        adv(&E.ph[1], k->f * horde_ratio(1, k->h) * 0.5f);
+        s += w_tri4(E.ph[1]) * 0.25f;         /* ein leiser Ton darunter, damit es ein Drone bleibt */
+        if (k->c != 0.0f)
+            s = s + (s * w_pulse(E.ph[1], 0.5f) - s) * absf(k->c);
+        s = (float)(int)(s * 16.0f) * (1.0f / 16.0f);
+        l[i] = s * (0.5f + 0.1f * (float)(E.arp_i & 1));
+        r[i] = s * (0.6f - 0.1f * (float)(E.arp_i & 1));
+    }
+}
+
+/* 11 SKELETON MARCH: der 4-Bit-Dreieck-Bass des NES und Rausch-Ticks im Takt (SPEED); ALCHEMY: wie dicht,
+ * CURSE: die Tonhöhe der Ticks */
+static void a_skeleton(const ctl *k, float *l, float *r, int n)
+{
+    int i;
+    float rate = 2.0f + k->sp * 0.25f;
+    for (i = 0; i < n; i++) {
+        float b, t;
+        E.arp_ph += rate / FK_SR;
+        if (E.arp_ph >= 1.0f) {
+            E.arp_ph -= 1.0f;
+            if (rng_f(&E.rng) < 0.25f + 0.75f * k->a)
+                E.sh_acc = 1.0f;
+        }
+        E.sh_acc *= 0.9993f;
+        adv(&E.ph[0], k->f * 0.5f * drift_of(0));
+        adv(&E.ph[1], k->f * 0.5f * horde_ratio(1, k->h) * drift_of(1));
+        b = (k->r < 0.5f ? w_tri4(E.ph[0]) : w_saw4(E.ph[0])) * 0.7f + w_tri4(E.ph[1]) * 0.3f * absf(k->h);
+        t = w_noise(&E.nz[0], 2000.0f + (k->c + 1.0f) * 12000.0f, k->c > 0.5f) * E.sh_acc * E.sh_acc;
+        l[i] = (b * 0.75f + t * 0.5f) * 0.5f;
+        r[i] = (b * 0.75f + t * 0.45f) * 0.5f;
+    }
+}
+
+/* 12 MAGE TOWER: die Welle wandert von Puls über Säge zu Dreieck und zur Tabelle (RUNE, ALCHEMY: wie schnell von
+ * selbst); CURSE: Pulsbreiten-Modulation */
+static float morph_wave(float ph, float m, const uint8_t *t, float duty)
+{
+    float x = m * 3.0f, a, b;
+    int s = (int)x;
+    x -= (float)s;
+    x = (float)((int)(x * 4.0f)) * 0.25f;     /* in vier Stufen */
+    switch (s) {
+    case 0: a = w_pulse(ph, duty); b = w_saw4(ph); break;
+    case 1: a = w_saw4(ph); b = w_tri4(ph); break;
+    default: a = w_tri4(ph); b = w_wt(t, ph); break;
+    }
+    return a + (b - a) * x;
+}
+static void a_mage(const ctl *k, float *l, float *r, int n)
+{
+    int i, v;
+    for (i = 0; i < n; i++) {
+        float sl = 0.0f, sr = 0.0f, m;
+        E.duty_ph = wrap1(E.duty_ph + (0.02f + k->a * 1.5f) / FK_SR);
+        m = clampf(k->r + 0.3f * k->a * fk_sin(E.duty_ph), 0.0f, 0.999f);
+        for (v = 0; v < 2; v++) {
+            float f = k->f * horde_ratio(v, k->h) * drift_of(v), x;
+            adv(&E.ph[v], f);
+            x = morph_wave(E.ph[v], m, E.wt[v], 0.5f - 0.44f * absf(k->c) * (0.5f + 0.5f * fk_sin(E.duty_ph * 3.0f + (float)v)));
+            sl += x * (v ? 0.35f : 0.65f);
+            sr += x * (v ? 0.65f : 0.35f);
+        }
+        l[i] = sl * 0.45f;
+        r[i] = sr * 0.45f;
+    }
+}
+
+/* 13 THRONE OF BONES: ein Oktav-Arpeggio (Grundton, Oktave, zwei Oktaven) mit wandernder Pulsbreite */
+static void a_throne(const ctl *k, float *l, float *r, int n)
+{
+    int i, octs = 2 + (int)(k->a * 2.99f);
+    float rate = 10.0f + k->sp * 2.0f;
+    for (i = 0; i < n; i++) {
+        float f, x, sub;
+        E.arp_ph += rate / FK_SR;
+        if (E.arp_ph >= 1.0f) {
+            E.arp_ph -= 1.0f;
+            E.arp_i = (E.arp_i + 1) % octs;
+        }
+        E.duty_ph = wrap1(E.duty_ph + 0.3f / FK_SR);
+        f = k->f * (float)(1 << E.arp_i) * drift_of(0);
+        adv(&E.ph[0], f);
+        x = w_pulse(E.ph[0], 0.1f + 0.35f * k->r * (0.6f + 0.4f * fk_sin(E.duty_ph)));
+        adv(&E.ph[1], k->f * 0.5f * horde_ratio(1, k->h));
+        sub = w_pulse(E.ph[1], 0.5f);
+        if (k->c < 0.0f)
+            x = x + (x * sub - x) * (-k->c);
+        else
+            x = x + (sub - x) * k->c * 0.5f;
+        l[i] = (x * 0.7f + sub * 0.3f) * 0.42f;
+        r[i] = (x * 0.6f + sub * 0.4f) * 0.42f;
+    }
+}
+
+/* 14 PIT OF DOOM: Frequenzteiler wie in alten Orgeln und Zählern: ein Rechteck, darunter /2 /3 /4 /5 /6, logisch
+ * gemischt; RUNE: welche Teiler, ALCHEMY: wie tief, CURSE: XOR statt Summe */
+static void a_pit(const ctl *k, float *l, float *r, int n)
+{
+    static const uint8_t MASK[8] = {0x03, 0x05, 0x09, 0x0B, 0x15, 0x1D, 0x2B, 0x3F};
+    int i, mask = MASK[(int)(k->r * 7.99f)], depth = 2 + (int)(k->a * 4.99f);
+    for (i = 0; i < n; i++) {
+        int d, cnt = 0, x = 0, on;
+        float s = 0.0f;
+        adv(&E.ph[0], k->f * 2.0f * drift_of(0));
+        if (E.ph[0] < k->f * 2.0f / FK_SR)
+            E.arp_i++;                         /* ein Zähler: jede Periode eins weiter */
+        for (d = 1; d <= depth; d++) {
+            if (!(mask >> (d - 1) & 1))
+                continue;
+            on = ((E.arp_i / d) & 1) ^ (d == 1 ? (E.ph[0] < 0.5f) : 0);
+            x ^= on;
+            s += on ? 1.0f : -1.0f;
+            cnt++;
+        }
+        s = cnt ? s / (float)cnt : 0.0f;
+        if (k->c > 0.0f)
+            s = s + ((x ? 1.0f : -1.0f) - s) * k->c;
+        adv(&E.ph[1], k->f * 0.5f * horde_ratio(1, k->h));
+        s += w_pulse(E.ph[1], 0.5f) * 0.3f * absf(k->h);
+        l[i] = r[i] = s * 0.4f;
+    }
+}
+
+/* 15 WIND OF THE ABYSS: langes Rauschen durch einen schwingenden Bandpass, der dem Grundton folgt; RUNE: wie grob
+ * das Rauschen getaktet ist, ALCHEMY: wie schnell der Sturm wandert */
+static void a_wind(const ctl *k, float *l, float *r, int n)
+{
+    int i, c;
+    float clk = 2000.0f + k->r * 40000.0f;
+    E.duty_ph = wrap1(E.duty_ph + (0.03f + k->a * 0.8f) * (float)n / FK_SR);
+    for (c = 0; c < 2; c++) {
+        float fc = k->f * (2.0f + (float)c * horde_ratio(1, k->h)) * fm_exp2f(1.2f * fk_sin(E.duty_ph + (float)c * 0.25f));
+        float g = clampf(TAU * fc / FK_SR, 0.001f, 0.9f), q = 0.08f + 0.12f * (1.0f - absf(k->c));
+        float *o = c ? r : l;
+        for (i = 0; i < n; i++) {
+            float x = w_noise(&E.nz[c], clk, k->c > 0.6f), hp, bp, lp;
+            lp = E.f_lp[c][1] + g * E.f_lp[c][0];
+            hp = x - lp - q * E.f_lp[c][0];
+            bp = g * hp + E.f_lp[c][0];
+            E.f_lp[c][0] = bp;
+            E.f_lp[c][1] = lp;
+            o[i] = clampf(bp * 0.5f, -1.0f, 1.0f);
+        }
+        E.f_lp[c][0] = fm_flush(E.f_lp[c][0]);
+        E.f_lp[c][1] = fm_flush(E.f_lp[c][1]);
+    }
+}
+
+/* 16 SPELLBOOK: zufällige Töne aus einer Tonleiter (QUEST), im Takt (SPEED); mit dem Echo werden sie ein Drone;
+ * ALCHEMY: wie weit sie springen, CURSE: wie oft eine Oktave dazwischen */
+static void a_spell(const ctl *k, float *l, float *r, int n)
+{
+    static const int8_t SC[4][7] = {{0, 3, 5, 7, 10, 12, 15}, {0, 2, 3, 7, 8, 12, 14}, {0, 2, 4, 7, 9, 12, 14},
+                                    {0, 1, 5, 7, 8, 12, 13}};
+    int i, s = (int)(k->q * 3.99f);
+    float rate = 1.0f + k->sp * 0.12f;
+    for (i = 0; i < n; i++) {
+        float f, x;
+        E.arp_ph += rate / FK_SR;
+        if (E.arp_ph >= 1.0f) {
+            E.arp_ph -= 1.0f;
+            E.step_note = SC[s][(int)(rng_f(&E.rng) * (2.0f + k->a * 4.99f))];
+            if (rng_f(&E.rng) < absf(k->c) * 0.6f)
+                E.step_note += k->c > 0.0f ? 12 : -12;
+        }
+        f = k->f * fm_exp2f((float)E.step_note / 12.0f) * drift_of(0);
+        adv(&E.ph[0], f);
+        x = k->r < 0.5f ? w_pulse(E.ph[0], 0.125f + k->r * 0.6f) : w_tri4(E.ph[0]);
+        adv(&E.ph[1], k->f * 0.5f * horde_ratio(1, k->h));
+        l[i] = (x * 0.7f + w_tri4(E.ph[1]) * 0.3f) * 0.45f;
+        r[i] = (x * 0.6f + w_tri4(E.ph[1]) * 0.4f) * 0.45f;
+    }
+}
+
+typedef void (*algo_fn)(const ctl *, float *, float *, int);
+static const algo_fn ALGO_FN[FK_NALGO] = {a_torch, a_crypt, a_goblin, a_breath, a_speaker, a_pokey, a_sid, a_adlib,
+                                          a_beholder, a_treasure, a_skeleton, a_mage, a_throne, a_pit, a_wind, a_spell};
+
+/* ---- ein Block ---- */
+void fk_render(float *l, float *r, int n)
+{
+    static float gl[FK_BLOCK_MAX], gr[FK_BLOCK_MAX];
+    ctl k;
+    int i, c;
+    float u, sm, lg, wd, bits, steps, age_hz, ecm, haunt, dec, dly, feed, cross, torch, fc_lp, fc_hp;
+    float atk, rel, vib, f0;
+    if (n > FK_BLOCK_MAX)
+        n = FK_BLOCK_MAX;
+    /* die Regler glätten */
+    for (i = 0; i < FK_NP; i++) {
+        float t = (float)E.raw[i] * (1.0f / 127.0f);
+        E.sm[i] += (t - E.sm[i]) * 0.15f;
+    }
+    if (E.raw[P_FATE] != E.last_fate) {
+        E.last_fate = E.raw[P_FATE];
+        reseed(E.last_fate);
+    }
+    /* der Wechsel: ausblenden, wechseln, einblenden */
+    E.xf += E.xf_dir * (float)n / (0.03f * FK_SR);
+    if (E.xf <= 0.0f && E.algo_next >= 0) {
+        E.algo = E.algo_next;
+        E.algo_next = -1;
+        E.xf_dir = 1.0f;
+        reseed(E.raw[P_FATE]);
+        for (i = 0; i < NV; i++)
+            E.ph[i] = E.ph2[i] = 0.0f;
+        E.arp_i = 0;
+    }
+    E.xf = clampf(E.xf, 0.0f, 1.0f);
+#define B(p) ((E.sm[p] - 0.5f) * 2.0f)
+    k.c = B(P_CURSE);
+    k.h = B(P_HORDE);
+    k.c = absf(k.c) < 0.03f ? 0.0f : k.c;
+    k.h = absf(k.h) < 0.03f ? 0.0f : k.h;
+    k.r = E.sm[P_RUNE];
+    k.a = E.sm[P_ALCHEMY];
+    k.q = E.sm[P_QUEST];
+    k.sp = 1.0f + E.sm[P_SPEED] * 59.0f;      /* 1 .. 60 Hz: die Bildrate der alten Spiele ist 50 / 60 */
+    /* die Tonhöhe: Gleiten, Vibrato (in der Bildrate, stufig wie im Tracker), PORTAL */
+    sm = E.sm[P_CREEP];
+    E.glide = sm < 0.01f ? 1.0f : 1.0f - fm_exp2f(-(float)n / (FK_SR * 0.002f * fm_exp2f(sm * 10.5f)));
+    E.pitch += (E.target - E.pitch) * E.glide;
+    E.vib_ph = wrap1(E.vib_ph + (2.0f + E.sm[P_SPEED] * 8.0f) * (float)n / FK_SR);
+    vib = E.sm[P_VIBRATO] * E.sm[P_VIBRATO] * 1.2f * (float)((int)(fk_sin(E.vib_ph) * 4.0f)) * 0.25f;
+    {
+        int portal = (int)(B(P_PORTAL) * 24.0f + (B(P_PORTAL) < 0.0f ? -0.5f : 0.5f));
+        f0 = mtof(E.pitch + E.bend + vib + (float)portal);
+    }
+    k.f = clampf(f0, 8.0f, 6000.0f);
+    for (i = 0; i < NV; i++) {               /* WANDER: jede Stimme driftet für sich (Cent) */
+        E.drift[i] += (rng_f(&E.rng) - 0.5f) * 3.0f * E.sm[P_WANDER] - E.drift[i] * 0.002f;
+        E.drift[i] = clampf(E.drift[i], -40.0f * E.sm[P_WANDER], 40.0f * E.sm[P_WANDER]);
+    }
+    ALGO_FN[E.algo](&k, gl, gr, n);
+    {   /* gleich laut: je Algorithmus ein Ausgleich (gemessen) */
+        static const float GAIN[FK_NALGO] = {1.0f, 1.5f, 1.0f, 1.15f, 1.2f, 1.4f, 2.6f, 1.5f,
+                                             1.4f, 1.0f, 1.3f, 1.65f, 1.0f, 0.95f, 0.95f, 1.0f};
+        float g = GAIN[E.algo];
+        for (i = 0; i < n; i++) {
+            gl[i] *= g;
+            gr[i] *= g;
+        }
+    }
+    /* die Hüllkurve */
+    atk = 1.0f * fm_exp2f(E.sm[P_AWAKEN] * 13.0f) * 0.001f * FK_SR;
+    rel = 5.0f * fm_exp2f(E.sm[P_SLUMBER] * 11.5f) * 0.001f * FK_SR;
+    /* TORCH: links schließt der Tiefpass, rechts öffnet der Hochpass (2 Pole, einfach wie damals) */
+    torch = B(P_TORCH);
+    fc_lp = torch < 0.0f ? 18000.0f * fm_exp2f(torch * 9.0f) : 18000.0f;
+    fc_hp = torch > 0.0f ? 20.0f * fm_exp2f(torch * 8.5f) : 20.0f;
+    {
+        float al = clampf(TAU * fc_lp / FK_SR, 0.0f, 1.0f), ah = clampf(TAU * fc_hp / FK_SR, 0.0f, 1.0f);
+        /* BITS: 16 .. 1 Bit; AGE: die Abtastrate 44,1 kHz .. 2 kHz (Halten) */
+        bits = 16.0f - E.sm[P_BITS] * 15.0f;
+        steps = fm_exp2f(bits - 1.0f);
+        age_hz = 44100.0f * fm_exp2f(-E.sm[P_AGE] * 4.46f);
+        for (i = 0; i < n; i++) {
+            float g = E.gate || E.hold, a = gl[i], b = gr[i];
+            if (g)
+                E.env += (1.0f - E.env) / (atk + 1.0f) * 1.5f;
+            else
+                E.env -= E.env / (rel + 1.0f) * 4.0f;
+            for (c = 0; c < 2; c++) {
+                float *x = c ? &b : &a;
+                E.f_lp[c][0] += (*x - E.f_lp[c][0]) * al;
+                E.f_lp[c][1] += (E.f_lp[c][0] - E.f_lp[c][1]) * al;
+                E.f_hp[c][0] += (E.f_lp[c][1] - E.f_hp[c][0]) * ah;
+                *x = E.f_lp[c][1] - E.f_hp[c][0];
+            }
+            a *= E.env * E.vel * E.xf;
+            b *= E.env * E.vel * E.xf;
+            if (bits < 15.5f) {
+                a = (float)(int)(a * steps + (a < 0.0f ? -0.5f : 0.5f)) / steps;
+                b = (float)(int)(b * steps + (b < 0.0f ? -0.5f : 0.5f)) / steps;
+            }
+            gl[i] = a;
+            gr[i] = b;
+        }
+        E.f_lp[0][0] = fm_flush(E.f_lp[0][0]);
+        E.f_lp[1][0] = fm_flush(E.f_lp[1][0]);
+        E.f_lp[0][1] = fm_flush(E.f_lp[0][1]);
+        E.f_lp[1][1] = fm_flush(E.f_lp[1][1]);
+        E.f_hp[0][0] = fm_flush(E.f_hp[0][0]);
+        E.f_hp[1][0] = fm_flush(E.f_hp[1][0]);
+    }
+    /* AGE: halten */
+    {
+        static float acc, hl, hr;
+        float st = age_hz / FK_SR;
+        for (i = 0; i < n; i++) {
+            acc += st;
+            if (acc >= 1.0f) {
+                acc -= 1.0f;
+                hl = gl[i];
+                hr = gr[i];
+            }
+            if (st < 0.999f) {
+                gl[i] = hl;
+                gr[i] = hr;
+            }
+        }
+    }
+    /* die Pumpe des GROOVE */
+    if (X_duck)
+        for (i = 0; i < n; i++) {
+            gl[i] *= X_duck[i];
+            gr[i] *= X_duck[i];
+        }
+    /* das Echo: 8 Bit im Speicher; HAUNT links Ping-Pong, rechts gerade; DECAY: dumpfer und körniger je Runde */
+    ecm = E.sm[P_ECHO];
+    haunt = B(P_HAUNT);
+    feed = absf(haunt) * 0.97f;
+    cross = haunt < 0.0f ? 1.0f : 0.0f;
+    dec = E.sm[P_DECAY];
+    dly = 5.0f * fm_exp2f(E.sm[P_DEPTH] * 7.2f) * 0.001f * FK_SR;
+    dly = clampf(dly, 8.0f, (float)FK_EC_N - 4.0f);
+    if (E.ed <= 0.0f)
+        E.ed = dly;
+    {
+        float lpc = 1.0f - dec * 0.85f, crush = dec > 0.5f ? (float)(int)(2.0f + (1.0f - dec) * 60.0f) : 0.0f;
+        float send = X_l ? X_send : 0.0f;
+        if (E.freeze)
+            feed = 1.0f;
+        for (i = 0; i < n; i++) {
+            float rl, rr, dl, dr, inl, inr, fr;
+            int32_t p0, p1;
+            uint32_t ri;
+            E.ed += (dly - E.ed) * 0.0005f;   /* die Zeit gleitet (ohne Knacken) */
+            fr = (float)E.ew - E.ed;
+            if (fr < 0.0f)
+                fr += (float)FK_EC_N;
+            ri = (uint32_t)fr;
+            p0 = E.m.ec[0][ri & (FK_EC_N - 1u)];
+            p1 = E.m.ec[0][(ri + 1u) & (FK_EC_N - 1u)];
+            rl = ((float)p0 + (float)(p1 - p0) * (fr - (float)ri)) * (1.0f / 120.0f);
+            p0 = E.m.ec[1][ri & (FK_EC_N - 1u)];
+            p1 = E.m.ec[1][(ri + 1u) & (FK_EC_N - 1u)];
+            rr = ((float)p0 + (float)(p1 - p0) * (fr - (float)ri)) * (1.0f / 120.0f);
+            E.elp[0] += (rl - E.elp[0]) * lpc;
+            E.elp[1] += (rr - E.elp[1]) * lpc;
+            dl = E.elp[0];
+            dr = E.elp[1];
+            if (crush > 0.0f && !E.freeze) {
+                dl = (float)(int)(dl * crush) / crush;
+                dr = (float)(int)(dr * crush) / crush;
+            }
+            inl = E.freeze ? 0.0f : gl[i] + (X_l ? X_l[i] * send : 0.0f);
+            inr = E.freeze ? 0.0f : gr[i] + (X_r ? X_r[i] * send : 0.0f);
+            {
+                float wl = inl + feed * (cross ? dr : dl), wr2 = inr + feed * (cross ? dl : dr);
+                if (cross) {                  /* Ping-Pong: hinein nur links */
+                    wl = (inl + inr) * 0.5f + feed * dr;
+                    wr2 = feed * dl;
+                }
+                E.m.ec[0][E.ew] = (int8_t)clampf(wl * 120.0f, -127.0f, 127.0f);
+                E.m.ec[1][E.ew] = (int8_t)clampf(wr2 * 120.0f, -127.0f, 127.0f);
+            }
+            E.ew = (E.ew + 1u) & (FK_EC_N - 1u);
+            gl[i] = gl[i] * (1.0f - 0.5f * ecm) + dl * ecm;
+            gr[i] = gr[i] * (1.0f - 0.5f * ecm) + dr * ecm;
+            if (X_send > 0.0f && X_l && ecm < 0.3f) {   /* der GROOVE in der Ferne: sein Echo klingt auch ohne ECHO */
+                gl[i] += dl * X_send * 0.5f;
+                gr[i] += dr * X_send * 0.5f;
+            }
+        }
+        E.elp[0] = fm_flush(E.elp[0]);
+        E.elp[1] = fm_flush(E.elp[1]);
+    }
+    X_duck = 0;
+    X_l = X_r = 0;
+    /* der Ausgang: Gleichanteil weg, Breite, Pegel, weich begrenzt */
+    lg = fm_exp2f((-30.0f + 36.0f * E.sm[P_VOLUME]) * 0.1660964f) * 0.9f;
+    wd = E.sm[P_WIDTH] * 1.2f;
+    E.duck_g += ((E.duck ? 0.0f : 1.0f) - E.duck_g) * 0.2f;
+    if (E.duck_g < 0.001f)
+        E.duck_g = 0.0f;
+    for (i = 0; i < n; i++) {
+        float a = gl[i], b = gr[i], m, s;
+        E.dcy[0] = a - E.dcx[0] + 0.9975f * E.dcy[0];
+        E.dcx[0] = a;
+        E.dcy[1] = b - E.dcx[1] + 0.9975f * E.dcy[1];
+        E.dcx[1] = b;
+        m = (E.dcy[0] + E.dcy[1]) * 0.5f;
+        s = (E.dcy[0] - E.dcy[1]) * 0.5f * wd;
+        a = softc((m + s) * lg) * E.duck_g;
+        b = softc((m - s) * lg) * E.duck_g;
+        l[i] = a;
+        r[i] = b;
+        u = absf(a) > absf(b) ? absf(a) : absf(b);
+        if (absf(a) > E.mtr[0])
+            E.mtr[0] = absf(a);
+        if (absf(b) > E.mtr[1])
+            E.mtr[1] = absf(b);
+        if (u > 0.97f)
+            E.clip = 1;
+        E.lvl += (u - E.lvl) * (u > E.lvl ? 0.01f : 0.0004f);
+    }
+    E.dcy[0] = fm_flush(E.dcy[0]);
+    E.dcy[1] = fm_flush(E.dcy[1]);
+    E.env = fm_flush(E.env);
+#undef B
+}
+
+/* ---- Anzeige ---- */
+float fk_meter(int c)
+{
+    float v = E.mtr[c & 1];
+    E.mtr[c & 1] = v * 0.80f;
+    return v;
+}
+int fk_clipped(void)
+{
+    int k = E.clip;
+    E.clip = 0;
+    return k;
+}
+int fk_note(void) { return (E.gate || E.hold) ? E.note : -1; }
+float fk_pitch(void) { return E.pitch; }
+int fk_gate(void) { return E.gate; }
+float fk_env(void) { return E.env; }
+float fk_level(void) { return E.lvl; }
+int fk_cur_algo(void) { return E.algo_next >= 0 ? E.algo_next : E.algo; }
+
+/* GARGOYLE: der GROOVE (dieselbe Übersetzungseinheit); seine kleinen Helfer */
+static inline float fk_clamp(float x, float lo, float hi) { return clampf(x, lo, hi); }
+static inline float fk_abs(float x) { return absf(x); }
+static inline uint32_t fk_rng(uint32_t *s) { return rng_u(s); }
+static inline float fk_rand01(uint32_t *s) { return rng_f(s); }
+static inline float fk_lp_coef(float hz) { float w = TAU * hz / FK_SR; return w / (1.0f + w); }
+#include "garg_groove.c"

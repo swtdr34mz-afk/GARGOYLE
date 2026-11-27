@@ -1,74 +1,54 @@
 /* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 swtdr34mz (GARGOYLE) */
 /* GARGOYLE: Bedienung, Seiten, Speicher, Bildschirm. Teil des Unity-Builds (device/unity.c, host/plat_host.c), nach
- * der Plattform: gfx.c und announce.c sind sichtbar. Der Klang ist dsp/fikh_core.c (der Kern von FIKH-S) und
- * dsp/garg_groove.c (der GROOVE).
+ * der Plattform: gfx.c und announce.c sind sichtbar. Der Klang ist dsp/chip_core.c (ein 8-Bit-Drone-Synth aus den
+ * Klangchips der alten Heimcomputer und DOS-Spiele) und dsp/garg_groove.c (der GROOVE).
  *
- * Die Idee: der Klang von FIKH-S, aber live spielbar. Statt sechs Seiten mit abstrakten Reglern vier Makros, die in
- * jedem Raum gleich heißen und gleich wirken; hinter jedem bewegen sich mehrere Parameter auf abgestimmten Kurven.
- * Die Mitte (64) ist der Klang ab Werk (der Sweetspot): dort rastet jeder Makro ein.
- *
+ * Bedienung wie bei FIKH-S: ein Regler, ein Parameter, sechs Seiten:
  *   Tasten     spielen (mono, die letzte Taste gewinnt), mit Anschlag; OCT- / OCT+ die Oktave
- *   HOME       PLAY:   TONE (dunkel - hell), MOVE (still - brodelnd), GRIT (sauber - kaputt), SPACE (trocken - endlos)
- *   HOME 2x    GROOVE: DENSITY, BREATH (die Pumpe), DISTANCE (nah - fern), TEMPO
+ *   HOME       SUMMON: CURSE, HORDE, RUNE, ALCHEMY
+ *   HOME 2x    GROOVE: DENSITY, BREATH (die Pumpe), DISTANCE (nah - fern, ins Echo), TEMPO
  *   HOME 3x    SETUP:  LEVEL, HUMAN (Zufall), FOLLOW (dem Grundton folgen), TUNE
- *   EDIT       DEEP:   COLOR (MORPH), GLIDE, WIDTH, LEVEL
- *   FX         FX:     MODE (DREAM, DARK, RISE, LIGHT, RAIN), X (je Modus), ECHO (die Delay-Zeit), AGE (STRETCH)
- *   SELECT     WRATH: ein Makro über allem, für live (der Drache erwacht), 4 je Raste
- *   PRESET     der Raum (22 Räume = die 22 Algorithmen von FIKH-S)
- *   ALGORITHM  SCAN (grob, für live); auf den GROOVE-Seiten: der Style
+ *   FX         ECHO:   ECHO, HAUNT, DECAY, DEPTH (das 8-Bit-Echo)
+ *   ENV        RITUAL: TORCH, PORTAL, AWAKEN, SLUMBER
+ *   EDIT       LORE:   CREEP, WANDER, BITS, VOLUME
+ *   LFO        SPELL:  AGE, VIBRATO, SPEED, WIDTH (für alle Algorithmen gleich)
+ *   SELECT     WRATH: ein Makro über allem, für live, 4 je Raste
+ *   PRESET     der Algorithmus (16, in zwei Bänken)
+ *   ALGORITHM  QUEST (grob, für live); auf den GROOVE-Seiten: der Style
  *   PLAY       HOLD: der Drone bleibt stehen, die Tasten ändern nur noch den Grundton
- *   REC        WÜRFELN (SEED und SCAN neu; 1 s: dazu COLOR und ECHO); auf den GROOVE-Seiten: der GROOVE an / aus
- *   ARP        FREEZE: Delay und Hall halten, was sie haben
- *   SEQ        1 s halten: der Raum zurück auf den Werksklang
+ *   REC        FATE: würfeln (FATE und QUEST neu; 1 s: dazu RUNE und ALCHEMY); auf den GROOVE-Seiten: GROOVE an / aus
+ *   ARP        FREEZE: das Echo hält, was es hat
+ *   SEQ        1 s halten: der Algorithmus zurück auf seinen Werksklang
  *   GLO        VOL: die Pegel im Bild
  *   SAVE       speichern (sonst von selbst, wenn es still ist); SAVE + eine der ersten 8 weißen Tasten: ein Snapshot,
- *              SEL + die Taste: zurückgeholt (die Makros gleiten hinüber)
- *   MIDI       Noten (alle Kanäle), Pitch Bend ±2, CC 1 COLOR, CC 70..73 TONE MOVE GRIT SPACE, CC 75 WRATH, Clock / Start / Stop
- *              für den GROOVE */
+ *              SEL + die Taste: zurückgeholt
+ *   MIDI       Noten (alle Kanäle), Pitch Bend ±2, CC 1 RUNE, CC 70..73 CURSE HORDE RUNE ALCHEMY, CC 75 WRATH,
+ *              Clock / Start / Stop für den GROOVE */
 #include "fastmath.h"
-#include "fikh_core.h"
+#include "chip_core.h"
 #include "garg_groove.h"
 #include "ui_serif.h"
 
 #define SR 44100.0f
 
 /* ------------------------------------------------------- der Klang-Speicher --- */
-static int16_t mem_dl[2][FK_DL_N] __attribute__((section(".pool")));
-static float mem_ch[2][FK_CH_N] __attribute__((section(".pool")));
-static float mem_ap[FK_AP_N] __attribute__((section(".pool")));
-static float mem_cb[4][FK_CB_N] __attribute__((section(".pool")));
-static float mem_wt[FK_WT_SETS * FK_WT_WAVES * FK_WT_LEN] __attribute__((section(".pool")));
-static float mem_sn[FK_SIN_N + 1] __attribute__((section(".pool")));
-static int16_t mem_rv[FK_RV_N] __attribute__((section(".pool")));
-static float mem_rva[FK_RVA_N] __attribute__((section(".pool")));
-static int16_t mem_sh[FK_SH_N] __attribute__((section(".pool")));
-
-/* ------------------------------------------------------------- die Räume --- */
-/* jeder Algorithmus von FIKH-S ist ein Raum im Dungeon */
-static const char *const ROOM_NAME[FK_NALGO] = {
-    "CRYPT", "FORGE", "CRYSTAL CAVE", "WATCHTOWER", "CHAPEL", "THRONE HALL", "BELFRY", "THE WELL", "MIST HALL",
-    "THE VOID", "ECHO SHAFT", "DUNGEON", "ROOST", "ORACLE", "STORM GATE", "MASONRY", "ABYSS", "GREAT HALL",
-    "RUNE VAULT", "LABYRINTH", "TREASURY", "GHOST HALL"};
+static int8_t mem_ec[2][FK_EC_N] __attribute__((section(".pool")));
 
 /* ------------------------------------------------------------- Speicher --- */
-#define SET_MAGIC 0x31475247u            /* "GRG1" */
+#define SET_MAGIC 0x32475247u            /* "GRG2": der 8-Bit-Kern */
 #define NSNAP 8
-enum { M_TONE, M_MOVE, M_GRIT, M_SPACE };
-enum { D_COLOR, D_GLIDE, D_WIDTH, D_LEVEL };
-enum { X_MODE, X_X, X_ECHO, X_AGE };
 typedef struct {
     uint8_t used, algo, oct, rsv;
-    uint8_t m[4], d[4], ss[2], fx[4], rsv2[2];
+    uint8_t p[FK_NPA];
+    uint8_t g[FK_NPG];
 } snap_t;
 typedef struct {
     uint32_t magic;
     uint8_t algo, oct, hold, snap;       /* snap: der zuletzt geholte Snapshot (0: keiner, 1..8) */
-    uint8_t m[FK_NALGO][4];              /* die Makros je Raum (64: der Werksklang) */
-    uint8_t d[FK_NALGO][4];              /* DEEP je Raum */
-    uint8_t ss[FK_NALGO][2];             /* SEED, SCAN je Raum */
-    uint8_t fx[4];                       /* FX: für alle Räume gleich */
-    gr_set grv;                          /* der GROOVE: global, ein Raumwechsel ändert den Beat nicht */
+    uint8_t p[FK_NALGO][FK_NPA];         /* jeder Algorithmus mit seinen Reglern */
+    uint8_t g[FK_NPG];                   /* SPELL: für alle gleich */
+    gr_set grv;                          /* der GROOVE: global, ein Wechsel ändert den Beat nicht */
     uint8_t wrath, rsv;                  /* WRATH (SELECT): global, über allem */
     snap_t snaps[NSNAP];
 } settings_t;
@@ -77,19 +57,7 @@ static settings_t set;
 static uint8_t set_dirty;
 static uint32_t dirty_at;
 
-static void room_defaults(int a)
-{
-    const uint8_t *in = FK_ALGOS[a].init;
-    int i;
-    for (i = 0; i < 4; i++)
-        set.m[a][i] = 64;
-    set.d[a][D_COLOR] = in[P_MORPH];
-    set.d[a][D_GLIDE] = in[P_GLIDE];
-    set.d[a][D_WIDTH] = in[P_WIDTH];
-    set.d[a][D_LEVEL] = in[P_LEVEL];
-    set.ss[a][0] = in[P_SEED];
-    set.ss[a][1] = in[P_SCAN];
-}
+static void algo_defaults(int a) { memcpy(set.p[a], FK_ALGOS[a].init, FK_NPA); }
 
 static void settings_defaults(void)
 {
@@ -99,11 +67,8 @@ static void settings_defaults(void)
     set.oct = 2;                         /* 0..4 = -2..+2: die Tasten F3..G5 */
     set.hold = 1;                        /* ein Drone-Synth: HOLD ist an */
     for (a = 0; a < FK_NALGO; a++)
-        room_defaults(a);
-    set.fx[X_MODE] = FK_VERB_INIT[P_VMODE - FK_NPA];
-    set.fx[X_X] = FK_VERB_INIT[P_VX - FK_NPA];
-    set.fx[X_ECHO] = 64;
-    set.fx[X_AGE] = FK_VERB_INIT[P_VSTRETCH - FK_NPA];
+        algo_defaults(a);
+    memcpy(set.g, FK_GLOBAL_INIT, FK_NPG);
     for (a = 0; a < GR_NP; a++)
         set.grv.p[a] = GR_INIT[a];
 }
@@ -117,11 +82,11 @@ static void settings_load(void)
         if (set.snaps[i].used > 1u || set.snaps[i].algo >= FK_NALGO || set.snaps[i].oct > 4u)
             ok = 0;
     for (a = 0; ok && a < FK_NALGO; a++)
-        for (i = 0; i < 4; i++)
-            if (set.m[a][i] > 127u || set.d[a][i] > 127u || (i < 2 && set.ss[a][i] > 127u))
+        for (i = 0; i < FK_NPA; i++)
+            if (set.p[a][i] > 127u)
                 ok = 0;
-    for (i = 0; ok && i < 4; i++)
-        if (set.fx[i] > 127u)
+    for (i = 0; ok && i < FK_NPG; i++)
+        if (set.g[i] > 127u)
             ok = 0;
     for (i = 0; ok && i < GR_NP; i++)
         if (set.grv.p[i] > 127u)
@@ -136,92 +101,33 @@ static void dirty(void)
     dirty_at = plat_ms();
 }
 
-/* ------------------------------------------ die Makros: was sie bewegen --- */
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
-/* von der Mitte (m = 64: der Wert ab Werk, init) nach unten bis lo, nach oben bis hi */
-static uint8_t mac(int init, int lo, int hi, int m)
-{
-    float t;
-    int v;
-    if (m < 64) {
-        t = (float)(64 - m) / 64.0f;
-        v = init + (int)((float)(lo - init) * t + (lo < init ? -0.5f : 0.5f));
-    } else {
-        t = (float)(m - 64) / 63.0f;
-        v = init + (int)((float)(hi - init) * t + (hi < init ? -0.5f : 0.5f));
-    }
-    return (uint8_t)iclamp(v, 0, 127);
-}
-
-/* alle Parameter der Engine aus dem Raum, seinen Makros, DEEP und FX */
-static void build(int a, const uint8_t *m, const uint8_t *d, const uint8_t *ss, const uint8_t *fx, uint8_t *o)
-{
-    const uint8_t *in = FK_ALGOS[a].init, *vi = FK_VERB_INIT;
-    int T = m[M_TONE], M = m[M_MOVE], G = m[M_GRIT], S = m[M_SPACE], w;
-    memcpy(o, in, FK_NPA);
-    memcpy(o + FK_NPA, vi, FK_NPV);
-#define VI(p) vi[(p) - FK_NPA]
-    /* TONE: das Filter zu (links) oder weit auf (rechts), der Hall dunkler / heller */
-    o[P_FIELD] = mac(in[P_FIELD], 6, 86, T);
-    o[P_VFILT] = mac(VI(P_VFILT), 6, 124, T);
-    /* MOVE: Drift, Spreizung, das Schweben des Halls */
-    o[P_DRIFT] = mac(in[P_DRIFT], 0, 127, M);
-    o[P_SPAN] = mac(in[P_SPAN], 64, in[P_SPAN] >= 64 ? 127 : 0, M);
-    o[P_VDEPTH] = mac(VI(P_VDEPTH), 0, 124, M);
-    o[P_VRATE] = mac(VI(P_VRATE), 6, 100, M);
-    /* GRIT: Kreuzmodulation weg von der Mitte, FUSE in die Sättigung, oben dazu die Frequenzverschiebung */
-    w = in[P_WARP];
-    o[P_WARP] = mac(w, 64, w < 64 ? 0 : 127, G);
-    o[P_FUSE] = mac(in[P_FUSE], 64, 122, G);
-    if (a != 8 && G > 96)                /* (GRAIN CLOUD: CELL ist die Tonhöhe, er bleibt) */
-        o[P_CELL] = (uint8_t)iclamp(in[P_CELL] + (G - 96) * 22 / 31, 0, 127);
-    o[P_FEED] = mac(in[P_FEED], in[P_FEED] - 10, in[P_FEED] >= 64 ? 112 : 16, G > 64 ? 64 + (G - 64) / 2 : G);
-    /* SPACE: Hall, Delay, diffus; ganz rechts endlos */
-    o[P_VMIX] = mac(VI(P_VMIX), 0, 118, S);
-    o[P_VDECAY] = mac(VI(P_VDECAY), 28, 127, S);
-    o[P_MIX] = mac(in[P_MIX], 10, 112, S);
-    o[P_FORM] = mac(in[P_FORM], 30, 124, S);
-    /* DEEP */
-    o[P_MORPH] = d[D_COLOR];
-    o[P_GLIDE] = d[D_GLIDE];
-    o[P_WIDTH] = d[D_WIDTH];
-    o[P_LEVEL] = d[D_LEVEL];
-    o[P_SEED] = ss[0];
-    o[P_SCAN] = ss[1];
-    /* FX */
-    o[P_VMODE] = fx[X_MODE];
-    o[P_VX] = fx[X_X];
-    o[P_TIME] = mac(in[P_TIME], 8, 124, fx[X_ECHO]);
-    o[P_VSTRETCH] = fx[X_AGE];
-#undef VI
-}
-
-/* WRATH (SELECT): ein Makro über allem, für live – der Drache erwacht: Kreuzmodulation und Sättigung bis zum Anschlag,
- * die Rückkopplung kocht, Metall in der Frequenzverschiebung, die Farbe wandert, der Hall wächst mit */
 static uint8_t lerp8(int a, int b, float t) { return (uint8_t)iclamp(a + (int)((float)(b - a) * t + 0.5f), 0, 127); }
-static void wrath(int a, int wv, uint8_t *o)
+/* WRATH (SELECT): ein Makro über allem, für live – das Monster erwacht: CURSE bis zum Anschlag, die Horde
+ * verstimmt, die Alchemie kocht, das Echo spukt, die Bits brechen weg, alles wird älter und schneller */
+static void wrath(int wv, uint8_t *o)
 {
     float w = (float)wv / 127.0f;
     if (wv <= 0)
         return;
-    o[P_WARP] = lerp8(o[P_WARP], o[P_WARP] >= 64 ? 127 : 0, w * 0.85f);
-    o[P_FUSE] = lerp8(o[P_FUSE], 124, w * 0.8f);
-    o[P_FEED] = lerp8(o[P_FEED], o[P_FEED] >= 64 ? 122 : 6, w * 0.7f);
-    if (a != 8)
-        o[P_CELL] = lerp8(o[P_CELL], 104, w * w * 0.7f);
-    o[P_MORPH] = (uint8_t)iclamp(o[P_MORPH] + (int)(w * 36.0f), 0, 127);
-    o[P_SPAN] = lerp8(o[P_SPAN], o[P_SPAN] >= 64 ? 127 : 0, w * 0.5f);
-    o[P_DRIFT] = lerp8(o[P_DRIFT], 127, w * 0.6f);
-    if (o[P_VMIX] < (uint8_t)(w * 100.0f))
-        o[P_VMIX] = (uint8_t)(w * 100.0f);
-    if (o[P_VDECAY] < (uint8_t)(60.0f + w * 60.0f))
-        o[P_VDECAY] = (uint8_t)(60.0f + w * 60.0f);
+    o[P_CURSE] = lerp8(o[P_CURSE], o[P_CURSE] >= 64 ? 127 : 0, w * 0.85f);
+    o[P_HORDE] = lerp8(o[P_HORDE], o[P_HORDE] >= 64 ? 127 : 0, w * 0.6f);
+    o[P_ALCHEMY] = lerp8(o[P_ALCHEMY], 127, w * 0.6f);
+    o[P_RUNE] = (uint8_t)iclamp(o[P_RUNE] + (int)(w * 40.0f), 0, 127);
+    o[P_HAUNT] = lerp8(o[P_HAUNT], o[P_HAUNT] >= 64 ? 124 : 4, w * 0.7f);
+    if (o[P_ECHO] < (uint8_t)(w * 90.0f))
+        o[P_ECHO] = (uint8_t)(w * 90.0f);
+    o[P_BITS] = lerp8(o[P_BITS], 118, w * w * 0.8f);
+    o[P_WANDER] = lerp8(o[P_WANDER], 127, w * 0.6f);
+    o[P_AGE] = lerp8(o[P_AGE], 100, w * w * 0.7f);
+    o[P_SPEED] = lerp8(o[P_SPEED], 127, w * 0.5f);
 }
 
 static void all_params(uint8_t *o)
 {
-    build(set.algo, set.m[set.algo], set.d[set.algo], set.ss[set.algo], set.fx, o);
-    wrath(set.algo, set.wrath, o);
+    memcpy(o, set.p[set.algo], FK_NPA);
+    memcpy(o + FK_NPA, set.g, FK_NPG);
+    wrath(set.wrath, o);
 }
 static void push_params(void)
 {
@@ -252,48 +158,34 @@ static void e_off(int note)
 }
 
 /* ------------------------------------------------------------------ Seiten --- */
-enum { PG_PLAY, PG_GROOVE, PG_SETUP, PG_DEEP, PG_FX, NPAGES };
-static const char *const PAGE_NAME[NPAGES] = {"PLAY", "GROOVE", "GROOVE SETUP", "DEEP", "FX"};
-/* was ein Regler ist: eine Quelle (Makro, GROOVE, DEEP, FX) und ihr Platz */
-enum { SRC_M, SRC_G, SRC_D, SRC_X };
-static const uint8_t PAGE_SRC[NPAGES] = {SRC_M, SRC_G, SRC_G, SRC_D, SRC_X};
+enum { PG_SUMMON, PG_GROOVE, PG_SETUP, PG_ECHO, PG_RITUAL, PG_LORE, PG_SPELL, NPAGES };
+static const char *const PAGE_NAME[NPAGES] = {"SUMMON", "GROOVE", "SETUP", "ECHO", "RITUAL", "LORE", "SPELL"};
+/* was ein Regler ist: ein Parameter der Engine (SRC_P) oder einer des GROOVE (SRC_G) */
+enum { SRC_P, SRC_G };
+static const uint8_t PAGE_SRC[NPAGES] = {SRC_P, SRC_G, SRC_G, SRC_P, SRC_P, SRC_P, SRC_P};
 static const uint8_t PAGE_IDX[NPAGES][4] = {
-    {M_TONE, M_MOVE, M_GRIT, M_SPACE},
+    {P_CURSE, P_HORDE, P_RUNE, P_ALCHEMY},
     {GR_DENS, GR_BREATH, GR_DIST, GR_TEMPO},
     {GR_LEVEL, GR_HUMAN, GR_FOLLOW, GR_TUNE},
-    {D_COLOR, D_GLIDE, D_WIDTH, D_LEVEL},
-    {X_MODE, X_X, X_ECHO, X_AGE},
+    {P_ECHO, P_HAUNT, P_DECAY, P_DEPTH},
+    {P_TORCH, P_PORTAL, P_AWAKEN, P_SLUMBER},
+    {P_CREEP, P_WANDER, P_BITS, P_VOLUME},
+    {P_AGE, P_VIBRATO, P_SPEED, P_WIDTH},
 };
-static const char *const MAC_NAME[4] = {"TONE", "MOVE", "GRIT", "SPACE"};
-static const char *const DEEP_NAME[4] = {"COLOR", "GLIDE", "WIDTH", "LEVEL"};
-static const char *const X_NAME[5] = {"VIBRATO", "OCT DOWN", "SWELL", "SHIMMER", "DIFFUSE"};   /* X je Modus */
-static const char *const MAC_RANGE[4][2] = {{"DARK", "BRIGHT"}, {"STILL", "CHURN"}, {"CLEAN", "BROKEN"},
-                                            {"DRY", "ENDLESS"}};
 
+static uint8_t *pval(int p) { return p >= FK_NPA ? &set.g[p - FK_NPA] : &set.p[set.algo][p]; }
 static uint8_t *kval(int pg, int k)
 {
     int i = PAGE_IDX[pg][k];
-    switch (PAGE_SRC[pg]) {
-    case SRC_M: return &set.m[set.algo][i];
-    case SRC_G: return &set.grv.p[i];
-    case SRC_D: return &set.d[set.algo][i];
-    default: return &set.fx[i];
-    }
+    return PAGE_SRC[pg] == SRC_G ? &set.grv.p[i] : pval(i);
 }
 static const char *kname(int pg, int k)
 {
-    switch (PAGE_SRC[pg]) {
-    case SRC_M: return MAC_NAME[k];
-    case SRC_G: return GR_PARAM_NAME[PAGE_IDX[pg][k]];
-    case SRC_D: return DEEP_NAME[k];
-    default:
-        if (k == X_X)
-            return X_NAME[fk_vmode_of(set.fx[X_MODE])];
-        return k == X_MODE ? "MODE" : k == X_ECHO ? "ECHO" : "AGE";
-    }
+    int i = PAGE_IDX[pg][k];
+    return PAGE_SRC[pg] == SRC_G ? GR_PARAM_NAME[i] : FK_PARAMS[i].name;
 }
-/* der Sweetspot: die Mitte rastet ein (die Makros, ECHO) */
-static int ksweet(int pg, int k) { return PAGE_SRC[pg] == SRC_M || (PAGE_SRC[pg] == SRC_X && k == X_ECHO); }
+/* die Mitte rastet ein (die bipolaren) */
+static int ksweet(int pg, int k) { return PAGE_SRC[pg] == SRC_P && FK_PARAMS[PAGE_IDX[pg][k]].bip; }
 
 /* was neu gezeichnet werden muss: Bereiche des Bildschirms */
 enum { R_ROW0 = 1, R_ROW1 = 2, R_ROW2 = 4, R_ROW3 = 8, R_HEAD = 16, R_MAP = 32, R_READ = 64, R_FOOT = 128,
@@ -360,44 +252,22 @@ static void int_text(int32_t v, char *b)
 static const char *kvalue_text(int pg, int k, char *t)
 {
     int v = *kval(pg, k);
-    uint8_t o[FK_NP];
     t[0] = 0;
-    switch (PAGE_SRC[pg]) {
-    case SRC_M:                          /* von der Mitte aus: 0 ist der Werksklang */
+    if (PAGE_SRC[pg] == SRC_P)
+        return fk_value_text(PAGE_IDX[pg][k], v, t);
+    switch (PAGE_IDX[pg][k]) {
+    case GR_TEMPO:
+        int_text(gr_bpm(v), t);
+        text_cat(t, " BPM");
+        break;
+    case GR_FOLLOW: text_cat(t, v >= 64 ? "ON" : "OFF"); break;
+    case GR_TUNE:
         if (v > 64)
             text_cat(t, "+");
         int_text(v - 64, t);
+        text_cat(t, " ST");
         break;
-    case SRC_G:
-        switch (PAGE_IDX[pg][k]) {
-        case GR_TEMPO:
-            int_text(gr_bpm(v), t);
-            text_cat(t, " BPM");
-            break;
-        case GR_FOLLOW: text_cat(t, v >= 64 ? "ON" : "OFF"); break;
-        case GR_TUNE:
-            if (v > 64)
-                text_cat(t, "+");
-            int_text(v - 64, t);
-            text_cat(t, " ST");
-            break;
-        default:
-            int_text((v * 100 + 63) / 127, t);
-            text_cat(t, "%");
-            break;
-        }
-        break;
-    case SRC_D:
-        all_params(o);
-        return fk_value_text(k == D_COLOR ? P_MORPH : k == D_GLIDE ? P_GLIDE : k == D_WIDTH ? P_WIDTH : P_LEVEL,
-                             o[k == D_COLOR ? P_MORPH : k == D_GLIDE ? P_GLIDE : k == D_WIDTH ? P_WIDTH : P_LEVEL], t);
     default:
-        if (k == X_MODE)
-            return FK_VMODE_NAME[fk_vmode_of(v)];
-        if (k == X_ECHO) {
-            all_params(o);
-            return fk_value_text(P_TIME, o[P_TIME], t);
-        }
         int_text((v * 100 + 63) / 127, t);
         text_cat(t, "%");
         break;
@@ -472,8 +342,6 @@ static void knob_changed(int k)
         push_params();
     dirty();
     say_knob(k);
-    if (PAGE_SRC[ui.page] == SRC_X && k == X_MODE)
-        ui.redraw |= R_ROW1;             /* X heißt je Modus anders */
 }
 
 static void knob_turn(int k, int32_t e)
@@ -482,30 +350,30 @@ static void knob_turn(int k, int32_t e)
     int v = *p, nv, src = PAGE_SRC[ui.page], idx = PAGE_IDX[ui.page][k];
     ui.knob_at[k] = plat_ms();
     ui.redraw |= (uint32_t)R_ROW0 << k;
-    if (src == SRC_X && idx == X_MODE) {          /* MODE: eine Raste, ein Modus */
-        int m = iclamp(fk_vmode_of(v) + (e > 0 ? 1 : -1), 0, 4);
-        nv = m * 128 / 5 + 12;
-    } else if (src == SRC_G && idx == GR_FOLLOW) {   /* FOLLOW: an / aus */
+    if (src == SRC_G && idx == GR_FOLLOW) {          /* FOLLOW: an / aus */
         nv = e > 0 ? 127 : 0;
     } else if (src == SRC_G && idx == GR_TUNE) {     /* TUNE: Halbtöne, ±12 */
         nv = iclamp(v + (e > 0 ? 1 : -1), 52, 76);
-    } else if (src == SRC_G && idx == GR_TEMPO) {    /* TEMPO: fein, schnell gedreht schneller */
-        nv = v + (int)accel(EN_K1 + k, e, 1, 4);
-    } else if (src == SRC_M || src == SRC_G || (src == SRC_X && idx == X_ECHO)) {
-        int step = coarse(EN_K1 + k, e);
-        if (ksweet(ui.page, k) && v == 64 && ++ui.rest[k] < 3) {   /* der Sweetspot: zwei Rasten halten */
+    } else if (src == SRC_G && idx != GR_TEMPO) {    /* GROOVE: grob */
+        nv = v + coarse(EN_K1 + k, e);
+    } else {                                         /* wie bei FIKH-S: fein, schnell gedreht schneller */
+        int step = (int)accel(EN_K1 + k, e, 1, 4);
+        if (src == SRC_P && idx == P_PORTAL) {       /* PORTAL: eine Raste, ein Halbton */
+            int st = (int)((float)(v - 64) / 63.0f * 24.0f + (v < 64 ? -0.5f : 0.5f)) + (e > 0 ? 1 : -1);
+            st = iclamp(st, -24, 24);
+            nv = 64 + (int)((float)st * 63.0f / 24.0f + (st < 0 ? -0.5f : 0.5f));
+            if (st == 0)
+                nv = 64;
+        } else if (ksweet(ui.page, k) && v == 64 && ++ui.rest[k] < 3) {   /* die Mitte rastet ein */
             say_knob(k);
             return;
-        }
-        if (ksweet(ui.page, k) && ((v < 64 && v + step >= 64) || (v > 64 && v + step <= 64))) {
+        } else if (ksweet(ui.page, k) && ((v < 64 && v + step >= 64) || (v > 64 && v + step <= 64))) {
             nv = 64;
             ui.rest[k] = 0;
         } else {
             nv = v + step;
             ui.rest[k] = 0;
         }
-    } else {
-        nv = v + (int)accel(EN_K1 + k, e, 1, 4);
     }
     nv = iclamp(nv, 0, 127);
     if (nv == v) {
@@ -544,7 +412,7 @@ static void algo_set(int a)
     dirty();
     ui.trans_at = plat_ms();
     ui.redraw |= R_ALL;
-    app_say(ROOM_NAME[set.algo], FK_ALGOS[set.algo].name);
+    app_say(FK_ALGOS[set.algo].name, FK_ALGOS[set.algo].sub);
 }
 
 /* ---- die Snapshots: ein ganzer Klang auf einer Taste ---- */
@@ -555,10 +423,8 @@ static void snap_store(int s)
     n->used = 1;
     n->algo = set.algo;
     n->oct = set.oct;
-    memcpy(n->m, set.m[set.algo], 4);
-    memcpy(n->d, set.d[set.algo], 4);
-    memcpy(n->ss, set.ss[set.algo], 2);
-    memcpy(n->fx, set.fx, 4);
+    memcpy(n->p, set.p[set.algo], FK_NPA);
+    memcpy(n->g, set.g, FK_NPG);
     set.snap = (uint8_t)(s + 1);
     dirty();
     t[5] = (char)('1' + s);
@@ -582,23 +448,21 @@ static void snap_load(int s)
     same = n->algo == set.algo;
     set.algo = n->algo;
     set.oct = n->oct;
-    memcpy(set.m[set.algo], n->m, 4);
-    memcpy(set.d[set.algo], n->d, 4);
-    memcpy(set.ss[set.algo], n->ss, 2);
-    memcpy(set.fx, n->fx, 4);
+    memcpy(set.p[set.algo], n->p, FK_NPA);
+    memcpy(set.g, n->g, FK_NPG);
     set.snap = (uint8_t)(s + 1);
     all_params(o);
     f = plat_lock();
     if (!same)
-        fk_algo(set.algo);               /* (derselbe Raum: die Makros gleiten hinüber) */
+        fk_algo(set.algo);               /* (derselbe Algorithmus: die Regler gleiten hinüber) */
     fk_params(o);
     plat_unlock(f);
     dirty();
     ui.redraw |= R_ALL;
-    app_say(t, ROOM_NAME[set.algo]);
+    app_say(t, FK_ALGOS[set.algo].name);
 }
 
-/* WÜRFELN: SEED und SCAN neu (deep: dazu COLOR und ECHO); der Zufall aus der Zeit */
+/* FATE: würfeln – FATE und QUEST neu (deep: dazu RUNE und ALCHEMY); der Zufall aus der Zeit */
 static void dice(int deep)
 {
     static uint32_t r = 0x6A09E667u;
@@ -606,26 +470,26 @@ static void dice(int deep)
     r ^= r << 13;
     r ^= r >> 17;
     r ^= r << 5;
-    set.ss[set.algo][0] = (uint8_t)(r % 128u);
-    set.ss[set.algo][1] = (uint8_t)((r >> 8) % 128u);
+    set.p[set.algo][P_FATE] = (uint8_t)(r % 128u);
+    set.p[set.algo][P_QUEST] = (uint8_t)((r >> 8) % 128u);
     if (deep) {
-        set.d[set.algo][D_COLOR] = (uint8_t)((r >> 15) % 128u);
-        set.fx[X_ECHO] = (uint8_t)(24u + (r >> 23) % 80u);
+        set.p[set.algo][P_RUNE] = (uint8_t)((r >> 15) % 128u);
+        set.p[set.algo][P_ALCHEMY] = (uint8_t)((r >> 23) % 128u);
     }
     push_params();
     dirty();
     ui.dice_at = plat_ms();
     ui.redraw |= R_ALL;
-    app_say(deep ? "DEEP DICE" : "DICE", "");
+    app_say(deep ? "DEEP FATE" : "FATE", "THE DICE ARE CAST");
 }
 
 static void factory(void)
 {
-    room_defaults(set.algo);
+    algo_defaults(set.algo);
     push_params();
     dirty();
     ui.redraw |= R_ALL;
-    app_say("INIT", ROOM_NAME[set.algo]);
+    app_say("INIT", FK_ALGOS[set.algo].name);
 }
 
 static void hold_set(int on)
@@ -717,13 +581,13 @@ static int groove_page(void) { return ui.page == PG_GROOVE || ui.page == PG_SETU
 static void button(uint32_t i)
 {
     switch (i) {
-    case B_HOME:                         /* PLAY, GROOVE, GROOVE SETUP (wie bei BA-55) */
-        page_set(ui.page == PG_PLAY ? PG_GROOVE : ui.page == PG_GROOVE ? PG_SETUP : PG_PLAY);
+    case B_HOME:                         /* SUMMON, GROOVE, GROOVE SETUP (wie bei BA-55) */
+        page_set(ui.page == PG_SUMMON ? PG_GROOVE : ui.page == PG_GROOVE ? PG_SETUP : PG_SUMMON);
         break;
-    case B_EDIT: page_set(PG_DEEP); break;
-    case B_FX: page_set(PG_FX); break;
-    case B_ENV:
-    case B_LFO: app_say("HOME EDIT FX", "HOME 2X: GROOVE"); break;
+    case B_FX: page_set(PG_ECHO); break;
+    case B_ENV: page_set(PG_RITUAL); break;
+    case B_EDIT: page_set(PG_LORE); break;
+    case B_LFO: page_set(PG_SPELL); break;
     case B_PLAY: hold_set(!set.hold); break;
     case B_REC: ui.rec_t = plat_ms(); break;
     case B_SEQ: ui.seq_t = plat_ms(); break;
@@ -828,15 +692,15 @@ static void input(void)
     if ((e = plat_enc(EN_ALGO)) != 0) {
         if (groove_page()) {                     /* auf den GROOVE-Seiten: der Style */
             style_turn(e);
-        } else {                                 /* SCAN: grob, für live */
-            int v = iclamp((int)set.ss[set.algo][1] + coarse(EN_ALGO, e), 0, 127);
-            if (v != set.ss[set.algo][1]) {
+        } else {                                 /* QUEST: grob, für live */
+            int v = iclamp((int)set.p[set.algo][P_QUEST] + coarse(EN_ALGO, e), 0, 127);
+            if (v != set.p[set.algo][P_QUEST]) {
                 char t[8] = "";
-                set.ss[set.algo][1] = (uint8_t)v;
+                set.p[set.algo][P_QUEST] = (uint8_t)v;
                 push_params();
                 dirty();
                 int_text(v, t);
-                app_say("SCAN", t);
+                app_say("QUEST", t);
             }
         }
     }
@@ -851,7 +715,10 @@ void app_input_only(void) { input(); }
 static void lights(void)
 {
     uint32_t now = plat_ms(), btn = 0, dimb = (1u << NB) - 1u, lit = 0, k;
-    btn |= 1u << (ui.page == PG_DEEP ? B_EDIT : ui.page == PG_FX ? B_FX : B_HOME);
+    {
+        static const uint8_t PB[NPAGES] = {B_HOME, B_HOME, B_HOME, B_FX, B_ENV, B_EDIT, B_LFO};
+        btn |= 1u << PB[ui.page];
+    }
     if (set.grv.on && gr_running() && now - ui.beat_at < 90u)   /* GROOVE: HOME blitzt mit jedem Schlag */
         btn ^= 1u << B_HOME;
     if (set.hold)
@@ -912,17 +779,15 @@ static void lights(void)
 static const col3 HERO[4] = {{226, 70, 52}, {236, 150, 44}, {96, 196, 96}, {96, 150, 240}};
 static const char *const HERO_CLASS[4] = {"FIGHTER", "DWARF", "ELF", "MAGE"};
 /* jede Seite ihr eigener Raum mit ihrem eigenen Monster (so merkt man sich, wo man ist); die Bilder: art.h
- * PLAY Ork, GROOVE Skelett, SETUP Schleim, DEEP Betrachter, FX Kristallkugel; WRATH ab der Hälfte: der Drache;
- * FREEZE: das Wasser; SAVE gehalten (Snapshots): der Schatz */
+ * SUMMON Ork, GROOVE Skelett, SETUP Schatz, ECHO Kristallkugel, RITUAL Schleim, LORE Betrachter, SPELL Wasser;
+ * WRATH ab der Hälfte: der Drache; FREEZE: alles eisblau; SAVE gehalten (Snapshots): der Schatz */
 enum { SC_ORC, SC_DRAGON, SC_ORB, SC_SKELETON, SC_SLIME, SC_BEHOLDER, SC_TREASURE, SC_WATER };
-static const uint8_t PAGE_SCENE[NPAGES] = {SC_ORC, SC_SKELETON, SC_SLIME, SC_BEHOLDER, SC_ORB};
+static const uint8_t PAGE_SCENE[NPAGES] = {SC_ORC, SC_SKELETON, SC_TREASURE, SC_ORB, SC_SLIME, SC_BEHOLDER, SC_WATER};
 static int snap_mode(void);
 static int scene_now(void)
 {
     if (snap_mode() == 2)
         return SC_TREASURE;
-    if (fk_frozen())
-        return SC_WATER;
     if (set.wrath >= 64)
         return SC_DRAGON;
     return PAGE_SCENE[ui.page];
@@ -1144,7 +1009,8 @@ static void view(uint32_t now)
     yb = VY1 < g_y1 ? VY1 : g_y1;
     {
         int32_t kq = (int32_t)(fl * tr * 256.0f), kr = (int32_t)((fl * tr) * (256.0f + 70.0f * wr)), kb = kq;
-        frozen = 0;                      /* (FREEZE hat sein eigenes Bild: das Wasser) */
+        if (frozen)
+            kr = (int32_t)((float)kq * 0.75f);
         for (y = ya; y < yb; y++) {
             const uint8_t *row = src + (uint32_t)(y - VY0) * ART_VW;
             for (x = xa; x < xb; x++) {
@@ -1330,7 +1196,7 @@ static void hero_panel(int k, uint32_t now)
         float sx = bx0 + (bx1 - bx0) * 64.0f / 127.0f;
         s_rect(sx, y + 29.0f, 1.0f, 8.0f, rgb3(250, 240, 210), v == 64 ? 1.0f : 0.55f);
     }
-    if (!hot && PAGE_SRC[ui.page] == SRC_M)
+    if (!hot && ui.page == PG_SUMMON)
         s_text(bx0, y + 20.0f, &FONT_XS, HERO_CLASS[k], C_TXT_DIM, 0);
     if (hot) {
         s_rect(x + 2.0f, y + 2.0f, 109.0f, 1.0f, h, 0.9f);
@@ -1361,9 +1227,9 @@ static void message(uint32_t now)
             text_cat(l, "0");
         int_text(set.algo + 1, l);
         text_cat(l, " ");
-        text_cat(l, ROOM_NAME[set.algo]);
+        text_cat(l, FK_ALGOS[set.algo].name);
         s_text(11.0f, MY0 + 4.0f, &FONT_XS, l, C_GOLD, 0);
-        s_rtext(229.0f, MY0 + 4.0f, &FONT_XS, FK_ALGOS[set.algo].name, C_TXT_DIM, 0);
+        s_rtext(229.0f, MY0 + 4.0f, &FONT_XS, FK_ALGOS[set.algo].sub, C_TXT_DIM, 0);
     }
     /* Zeile 2: der Regler, der gerade gedreht wird; Snapshots; WRATH */
     l[0] = 0;
@@ -1392,10 +1258,11 @@ static void message(uint32_t now)
         text_cat(l, kname(ui.page, k));
         text_cat(l, " ");
         text_cat(l, kvalue_text(ui.page, k, v));
-        if (PAGE_SRC[ui.page] == SRC_M) {
+        if (ui.page == PG_SUMMON && k == 3) {    /* ALCHEMY: was sie hier tut */
             text_cat(l, "  ");
-            text_cat(l, val == 64 ? "SWEETSPOT" : MAC_RANGE[k][val > 64]);
+            text_cat(l, FK_ALGOS[set.algo].alch);
         }
+        (void)val;
         s_text(11.0f, MY0 + 17.0f, &FONT_XS, l, c565(HERO[k]), 0);
         return;
     }
@@ -1405,7 +1272,7 @@ static void message(uint32_t now)
         text_cat(l, "%");
         s_text(11.0f, MY0 + 17.0f, &FONT_XS, l, RGB(220, 90, 70), 0);
     } else {
-        s_text(11.0f, MY0 + 17.0f, &FONT_XS, "SELECT: WRATH  PRESET: ROOM", C_TXT_DIM, 0);
+        s_text(11.0f, MY0 + 17.0f, &FONT_XS, "SELECT: WRATH  PRESET: ALGO", C_TXT_DIM, 0);
     }
 }
 
@@ -1549,18 +1416,8 @@ void app_init(void)
 {
     fk_mem m;
     int i;
-    m.dl[0] = mem_dl[0];
-    m.dl[1] = mem_dl[1];
-    m.ch[0] = mem_ch[0];
-    m.ch[1] = mem_ch[1];
-    m.ap = mem_ap;
-    for (i = 0; i < 4; i++)
-        m.comb[i] = mem_cb[i];
-    m.wt = mem_wt;
-    m.sn = mem_sn;
-    m.rv = mem_rv;
-    m.rva = mem_rva;
-    m.sh = mem_sh;
+    m.ec[0] = mem_ec[0];
+    m.ec[1] = mem_ec[1];
     settings_load();
     fk_init(&m);
     gr_init();
@@ -1581,9 +1438,9 @@ static void midi_cc(int cc, int v)       /* im Audio-Interrupt */
 {
     uint8_t o[FK_NP];
     if (cc == 1)
-        set.d[set.algo][D_COLOR] = (uint8_t)v;
+        set.p[set.algo][P_RUNE] = (uint8_t)v;
     else if (cc >= 70 && cc <= 73)
-        set.m[set.algo][cc - 70] = (uint8_t)v;
+        set.p[set.algo][P_CURSE + cc - 70] = (uint8_t)v;
     else if (cc == 75)
         set.wrath = (uint8_t)v;
     else
@@ -1701,7 +1558,7 @@ void app_frame(void)
     }
     if (ann_on() && ann_where()) {
         char t[64] = "GARGOYLE. ";
-        text_cat(t, ROOM_NAME[set.algo]);
+        text_cat(t, FK_ALGOS[set.algo].name);
         text_cat(t, ". ");
         text_cat(t, PAGE_NAME[ui.page]);
         ann_say(t, 0, ANN_NOW);
@@ -1826,12 +1683,8 @@ int app_expect(const char *what, int *got)
         *got = (int)(fk_level() * 1000.0f) >= atoi(what + 14);
     else if (!strcmp(what, "level_x1000"))
         *got = (int)(fk_level() * 1000.0f);
-    else if (!strncmp(what, "mac", 3))   /* macN: der Makro N (0..3) des Raums */
-        *got = set.m[set.algo][atoi(what + 3) & 3];
-    else if (!strncmp(what, "deep", 4))
-        *got = set.d[set.algo][atoi(what + 4) & 3];
-    else if (!strncmp(what, "fx", 2))
-        *got = set.fx[atoi(what + 2) & 3];
+    else if (!strncmp(what, "set", 3))   /* setN: der gespeicherte Parameter N (ohne WRATH) */
+        *got = *pval(atoi(what + 3) % FK_NP);
     else if (!strcmp(what, "grv_on"))
         *got = set.grv.on;
     else if (!strcmp(what, "grv_style"))
@@ -1847,7 +1700,7 @@ int app_expect(const char *what, int *got)
     else if (!strcmp(what, "wrath"))
         *got = set.wrath;
     else if (!strcmp(what, "scan"))
-        *got = set.ss[set.algo][1];
+        *got = set.p[set.algo][P_QUEST];
     else if (what[0] == 'p' && what[1] >= '0' && what[1] <= '9') {   /* pN: der Parameter N der Engine (berechnet) */
         all_params(o);
         *got = o[atoi(what + 1) % FK_NP];

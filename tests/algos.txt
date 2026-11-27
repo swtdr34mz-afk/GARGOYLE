@@ -1,183 +1,135 @@
-# GARGOYLE: all 22 rooms, held as a drone (a screen and a recording of each)
+# GARGOYLE: all 16 algorithms, held as a drone (a screen and a recording of each)
 wait 4000
 key 0 down 100
 wait 100
 key 0 up
 expect note 53
-wav r1.wav
+wav a1.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 0
-shot r1.png
+shot a1.png
 turn PRESET 1
 wait 100
-wav r2.wav
+wav a2.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 1
-shot r2.png
+shot a2.png
 turn PRESET 1
 wait 100
-wav r3.wav
+wav a3.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 2
-shot r3.png
+shot a3.png
 turn PRESET 1
 wait 100
-wav r4.wav
+wav a4.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 3
-shot r4.png
+shot a4.png
 turn PRESET 1
 wait 100
-wav r5.wav
+wav a5.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 4
-shot r5.png
+shot a5.png
 turn PRESET 1
 wait 100
-wav r6.wav
+wav a6.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 5
-shot r6.png
+shot a6.png
 turn PRESET 1
 wait 100
-wav r7.wav
+wav a7.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 6
-shot r7.png
+shot a7.png
 turn PRESET 1
 wait 100
-wav r8.wav
+wav a8.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 7
-shot r8.png
+shot a8.png
 turn PRESET 1
 wait 100
-wav r9.wav
+wav a9.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 8
-shot r9.png
+shot a9.png
 turn PRESET 1
 wait 100
-wav r10.wav
+wav a10.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 9
-shot r10.png
+shot a10.png
 turn PRESET 1
 wait 100
-wav r11.wav
+wav a11.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 10
-shot r11.png
+shot a11.png
 turn PRESET 1
 wait 100
-wav r12.wav
+wav a12.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 11
-shot r12.png
+shot a12.png
 turn PRESET 1
 wait 100
-wav r13.wav
+wav a13.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 12
-shot r13.png
+shot a13.png
 turn PRESET 1
 wait 100
-wav r14.wav
+wav a14.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 13
-shot r14.png
+shot a14.png
 turn PRESET 1
 wait 100
-wav r15.wav
+wav a15.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 14
-shot r15.png
+shot a15.png
 turn PRESET 1
 wait 100
-wav r16.wav
+wav a16.wav
 wait 2500
 wavstop
 expect peak_db_min -40
 expect engine_algo 15
-shot r16.png
-turn PRESET 1
-wait 100
-wav r17.wav
-wait 2500
-wavstop
-expect peak_db_min -40
-expect engine_algo 16
-shot r17.png
-turn PRESET 1
-wait 100
-wav r18.wav
-wait 2500
-wavstop
-expect peak_db_min -40
-expect engine_algo 17
-shot r18.png
-turn PRESET 1
-wait 100
-wav r19.wav
-wait 2500
-wavstop
-expect peak_db_min -40
-expect engine_algo 18
-shot r19.png
-turn PRESET 1
-wait 100
-wav r20.wav
-wait 2500
-wavstop
-expect peak_db_min -40
-expect engine_algo 19
-shot r20.png
-turn PRESET 1
-wait 100
-wav r21.wav
-wait 2500
-wavstop
-expect peak_db_min -40
-expect engine_algo 20
-shot r21.png
-turn PRESET 1
-wait 100
-wav r22.wav
-wait 2500
-wavstop
-expect peak_db_min -40
-expect engine_algo 21
-shot r22.png
+shot a16.png
 turn PRESET 1
 wait 100
 expect algo 0

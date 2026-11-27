@@ -4,7 +4,7 @@ turn PRESET 4
 expect algo 4
 wait 100
 turn K1 6 120
-expect mac0 74
+expect set0 80
 press SAVE
 wait 100
 shot snapstore.png
@@ -14,7 +14,6 @@ key 2 up
 release SAVE
 expect snap 2
 expect snapused2 1
-expect note -1
 turn PRESET 9
 expect algo 13
 turn K1 -4 120
@@ -26,7 +25,7 @@ wait 50
 key 2 up
 release SEL
 expect algo 4
-expect mac0 74
+expect set0 80
 press SEL
 key 4 down 100
 wait 50

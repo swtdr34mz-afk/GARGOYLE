@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 swtdr34mz (GARGOYLE) */
-/* GARGOYLE – GROOVE (siehe garg_groove.h). Teil von fikh_core.c: fk_sin, fk_svf, fk_rand01 ... sind sichtbar.
+/* GARGOYLE – GROOVE (siehe garg_groove.h). Teil von chip_core.c.
  *
- * Eine Stimme ist ein kleines Geräusch: ein Sinus mit Tonhöhen-Hüllkurve (Herz, Trommel, Tropfen), wahlweise
- * ringmoduliert (Glocke, Kette), dazu gefiltertes Rauschen (Schritt, Flügel, Knistern), eine Hüllkurve (Anstieg,
- * Abklingen) und Wiederholungen (die Glieder einer Kette, ein zweiter Flügelschlag). Jeder Style hat zwei Spuren mit
- * je einem Geräusch über einen Takt aus 16 Schritten; DENSITY entscheidet, welche Schritte klingen. */
+ * Die Geräusche klingen wie die Soundeffekte alter Konsolen und DOS-Spiele, nicht wie ein moderner Synth: ein
+ * 4-Bit-Dreieck oder eine Pulswelle (Herz, Trommel, Tropfen), zwei Pulswellen gegeneinander (Glocke, Kette), der
+ * Rausch-Generator mit seinem Schieberegister (Schritt, Flügel, Knistern; im kurzen Modus metallisch). Lautstärke in
+ * 16 Stufen, Tonhöhe und Lautstärke ändern sich nur 60-mal in der Sekunde (wie die Bildrate damals), am Ende 6 Bit.
+ * Jeder Style hat zwei Spuren über einen Takt aus 16 Schritten; DENSITY entscheidet, welche Schritte klingen. */
 #include "garg_groove.h"
 
 const char *const GR_STYLE_NAME[GR_NSTYLES] = {"HEARTBEAT", "FOOTSTEPS", "DRIPS", "CHAINS", "WINGS",
@@ -46,11 +47,12 @@ typedef struct {
     float vel, env, atk, dec, gain;      /* env 0..1; atk: Schritt je Sample im Anstieg; dec: Faktor je Sample */
     int rising;
     float ph, f, fend, pe, pdec;         /* Tonhöhe: f -> fend (pe 1 -> 0) */
-    float ph2, ring;                     /* Ringmodulation: Verhältnis (0: keine) */
+    float ph2, ring;                     /* zwei Pulswellen gegeneinander: Verhältnis (0: keine) */
     float tone, noise, pan;
-    fk_svf nz;
-    fk_svf_c nc;
-    float nf, nq, nsweep;                /* das Rauschfilter: Hz, Resonanz, Faktor je Block */
+    lfsr_t ln;                           /* der Rausch-Generator */
+    float nf, nq, nsweep;                /* sein Takt (Hz), nq > 0.6: kurzer Modus (metallisch), Faktor je Block */
+    int frame;                           /* bis zum nächsten "Bild" (60 je Sekunde) */
+    float fcur, ecur;                    /* Tonhöhe und Lautstärke, nur je Bild neu */
     int reps, rgap;                      /* Wiederholungen und ihr Abstand (Samples) */
     float rfall;                         /* jede Wiederholung leiser */
 } gr_voice;
@@ -234,8 +236,8 @@ static void gr_hit(int type, float vel, float rl, int wait, int accent)
     v->atk = 1.0f / (v->atk * 0.001f * FK_SR + 1.0f);
     v->dec = gr_db_coef(v->dec);
     v->pe = 1.0f;
-    if (v->noise > 0.0f)
-        fk_svf_set(&v->nc, v->nf, v->nq);
+    v->ln.r = (uint16_t)(1u + (fk_rng(&G.rng) & 0x7FFEu));
+    v->fcur = v->f;
     G.hits++;
 }
 
@@ -298,25 +300,27 @@ static void gr_voice_block(gr_voice *v, float *l, float *r, float *trig, int n)
         } else {
             v->env *= v->dec;
         }
+        v->pe *= v->pdec;
+        if (--v->frame <= 0) {           /* ein neues Bild: Tonhöhe und Lautstärke in Stufen */
+            v->frame = 735;
+            v->fcur = v->fend + (v->f - v->fend) * v->pe;
+            v->ecur = (float)(int)(v->env * 15.0f + 0.5f) * (1.0f / 15.0f);
+        }
         if (v->tone > 0.0f) {
-            float f = v->fend + (v->f - v->fend) * v->pe, t;
-            v->pe *= v->pdec;
+            float f = v->fcur, t;
             v->ph += f * (1.0f / FK_SR);
             v->ph -= (float)(int)v->ph;
-            t = fk_sin(v->ph);
+            t = f < 260.0f ? w_tri4(v->ph) : w_pulse(v->ph, 0.25f);
             if (v->ring > 0.0f) {
                 v->ph2 += f * v->ring * (1.0f / FK_SR);
                 v->ph2 -= (float)(int)v->ph2;
-                t = t * 0.55f + t * fk_sin(v->ph2) * 0.75f;
+                t = (w_pulse(v->ph, 0.5f) + w_pulse(v->ph2, 0.5f)) * 0.5f;
             }
-            s += t * v->tone;
+            s += t * v->tone * 0.8f;
         }
-        if (v->noise > 0.0f) {
-            float lp, bp, hp;
-            fk_svf_run(&v->nz, &v->nc, fk_rand11(&G.rng), &lp, &bp, &hp);
-            s += bp * v->noise * 1.6f;
-        }
-        a = s * v->env * g;
+        if (v->noise > 0.0f)
+            s += w_noise(&v->ln, v->nf * 4.0f, v->nq > 0.6f) * v->noise * 0.55f;
+        a = s * v->ecur * g;
         l[i] += a * pl;
         r[i] += a * pr;
         if (!v->rising && v->env < 0.0005f) {
@@ -330,7 +334,6 @@ static void gr_voice_block(gr_voice *v, float *l, float *r, float *trig, int n)
                 v->pe = 1.0f;
                 if (v->type == H_WING) {
                     v->nf = 700.0f;
-                    fk_svf_set(&v->nc, v->nf, v->nq);
                 }
             } else {
                 v->on = 0;
@@ -338,8 +341,6 @@ static void gr_voice_block(gr_voice *v, float *l, float *r, float *trig, int n)
             }
         }
     }
-    v->nz.ic1 = fm_flush(v->nz.ic1);
-    v->nz.ic2 = fm_flush(v->nz.ic2);
 }
 
 void gr_render(float *dl, float *dr, float *wl, float *wr, float *duck, int n, float root_midi)
@@ -360,10 +361,8 @@ void gr_render(float *dl, float *dr, float *wl, float *wr, float *duck, int n, f
     /* die Rauschfilter wandern je Block (Flügel, Schleifen) */
     for (k = 0; k < GR_NV; k++) {
         gr_voice *v = &G.v[k];
-        if (v->on && v->noise > 0.0f && v->nsweep != 1.0f && !v->wait) {
+        if (v->on && v->noise > 0.0f && v->nsweep != 1.0f && !v->wait)
             v->nf *= v->nsweep;
-            fk_svf_set(&v->nc, v->nf, v->nq);
-        }
     }
     G.wph += (float)n / (G.ss * 16.0f * 8.0f);   /* acht Takte */
     G.wph -= fm_floorf(G.wph);
@@ -398,7 +397,7 @@ void gr_render(float *dl, float *dr, float *wl, float *wr, float *duck, int n, f
         if (G.v[k].on)
             gr_voice_block(&G.v[k], wl, wr, duck, n);
     for (i = 0; i < n; i++) {
-        float l = wl[i] * lvl, r = wr[i] * lvl, m;
+        float l = (float)(int)(wl[i] * lvl * 32.0f) * (1.0f / 32.0f), r = (float)(int)(wr[i] * lvl * 32.0f) * (1.0f / 32.0f), m;   /* 6 Bit */
         wl[i] = l;
         wr[i] = r;
         G.lp[0][0] += (l - G.lp[0][0]) * lpc;   /* FERNE: weiter weg, dumpfer und leiser */
