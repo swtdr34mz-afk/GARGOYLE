@@ -16,7 +16,7 @@ const fk_param_info FK_PARAMS[FK_NP] = {
 };
 const char *const FK_SHAPE_NAME[FK_NSHAPE] = {"SINE", "TRIANGLE", "SAW", "SQUARE", "STAIRS", "CHANCE",
                                                    "DRIFT", "SWELL", "HEART", "BOUNCE", "CHAOS", "TURING"};
-const char *const FK_PATH_NAME[FK_NPATH] = {"BREATH", "FLAME", "HAUNT", "AURA", "RUNE", "CURSE", "DECAY", "STORM", "MORPH"};
+const char *const FK_PATH_NAME[FK_NPATH] = {"BREATH", "FLAME", "HAUNT", "AURA", "RUNE", "CURSE", "DECAY", "STORM", "MORPH", "TORCH"};
 /* OMEN: RATE frei 0,016 .. 20 Hz; zum GROOVE in Notenwerten (Zyklen je Takt) */
 static float omen_hz(int v) { return 0.016f * fm_exp2f((float)v * (10.29f / 127.0f)); }
 static const float OMEN_CPB[8] = {0.25f, 0.5f, 1.0f, 2.0f, 4.0f, 8.0f, 16.0f, 32.0f};
@@ -24,7 +24,7 @@ static const char *const OMEN_DIV[8] = {"4 BARS", "2 BARS", "1 BAR", "1/2", "1/4
 static float omen_sync_bpm;
 
 /* AGE, AURA, SPEED, WIDTH, RATE, SHAPE, POWER, PATH: wie sie anfangen (AURA an: ein Drone von Anfang an; OMEN aus) */
-const uint8_t FK_GLOBAL_INIT[FK_NPG] = {10, 64, 50, 96, 64, 0, 0, 7, 40, 0, 0, 21, 80, 0, 0, 64, 30, 0, 0, 120};
+const uint8_t FK_GLOBAL_INIT[FK_NPG] = {10, 64, 50, 96, 64, 0, 0, 6, 40, 0, 0, 19, 80, 0, 0, 57, 30, 0, 0, 108};
 
 /*                                                CURSE HORDE RUNE ALCH  ECHO HAUNT DECAY DEPTH  TORCH PORTAL AWAKEN SLUMB  CREEP WANDER BITS VOL  FATE QUEST */
 const fk_algo_info FK_ALGOS[FK_NALGO] = {

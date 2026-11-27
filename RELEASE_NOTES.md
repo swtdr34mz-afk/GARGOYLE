@@ -1,5 +1,6 @@
-**GARGOYLE v0.1.7**
+**GARGOYLE v0.1.8**
 
-- SAVE without a key no longer dips the sound: while something sounds it waits and saves as soon as it is quiet (when it is quiet already, it saves right away)
+- new LFO PATH **TORCH**: an OMEN turns the TORCH knob itself – around the middle it swings between low pass and high pass, from a set TORCH it swings around that position
+- every LFO keeps its PATH from before
 
 Install: download the .fwsc below and flash it with the M-Flasher. Your sounds and snapshots stay.

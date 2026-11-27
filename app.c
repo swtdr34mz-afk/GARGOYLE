@@ -38,7 +38,8 @@ static float mem_df[FK_DF_N] __attribute__((section(".pool")));
 static float mem_res[FK_NRES][FK_RS_N] __attribute__((section(".pool")));
 
 /* ------------------------------------------------------------- Speicher --- */
-#define SET_MAGIC 0x39475247u            /* "GRG9": 27 Snapshots */
+#define SET_MAGIC 0x41475247u            /* "GRGA": PATH mit TORCH (10 Wege) */
+#define SET_MAGIC9 0x39475247u           /* "GRG9" (v0.1.6, v0.1.7): 27 Snapshots, 9 Wege */
 #define SET_MAGIC8 0x38475247u           /* "GRG8" (v0.1.5): 8 Snapshots */
 #define SET_MAGIC7 0x37475247u           /* "GRG7" (v0.1.4): vier OMEN, sechs Formen */
 #define SET_MAGIC6 0x36475247u           /* "GRG6" (v0.1.2, v0.1.3): ein OMEN */
@@ -82,9 +83,28 @@ static void settings_defaults(void)
 
 /* ältere Speicherstände übernehmen: v0.1.0 (GRG4, QUEST war die Variante) und v0.1.1 (GRG5) mit 4 globalen Reglern,
  * v0.1.2 / v0.1.3 (GRG6) mit 8 (ein OMEN), v0.1.4 (GRG7) mit 20, aber 6 Formen; sonst gleich gebaut */
+static uint8_t zone_map(uint8_t v, int from, int to) { return (uint8_t)((((int)v * from >> 7) * 128 + 64) / to); }
+/* PATH bekommt neue Wege: jeder LFO behält seinen (in den Einstellungen und allen Snapshots) */
+static void path_remap(int nlfo, int from)
+{
+    int l, i;
+    for (l = 0; l < nlfo; l++) {
+        int k = P_PATH - FK_NPA + 4 * l;
+        set.g[k] = zone_map(set.g[k], from, FK_NPATH);
+        for (i = 0; i < NSNAP; i++)
+            if (set.snaps[i].used)
+                set.snaps[i].g[k] = zone_map(set.snaps[i].g[k], from, FK_NPATH);
+    }
+}
 static int settings_migrate(const uint8_t *o, int got)
 {
     uint32_t mg = (uint32_t)o[0] | (uint32_t)o[1] << 8 | (uint32_t)o[2] << 16 | (uint32_t)o[3] << 24;
+    if (mg == SET_MAGIC9 && got == (int)sizeof set) {   /* v0.1.6 / v0.1.7: gleich gebaut, nur PATH hatte 9 Wege */
+        memcpy(&set, o, sizeof set);
+        set.magic = SET_MAGIC;
+        path_remap(FK_NOMEN, 9);
+        return 1;
+    }
     static const uint8_t OKEY[NSNAP_OLD] = {0, 2, 4, 6, 7, 9, 11, 12};   /* wo die alten acht lagen */
     int ng = mg == SET_MAGIC4 || mg == SET_MAGIC5 ? 4 : mg == SET_MAGIC6 ? 8 : mg == SET_MAGIC7 || mg == SET_MAGIC8 ? FK_NPG : 0;
     int a, i, l, q = mg == SET_MAGIC4, sh6 = mg == SET_MAGIC6 || mg == SET_MAGIC7;
@@ -125,11 +145,8 @@ static int settings_migrate(const uint8_t *o, int got)
         for (i = 0; i < NSNAP; i++)
             set.snaps[i].g[k] = (uint8_t)(((set.snaps[i].g[k] * 6 >> 7) * 128 + 64) / FK_NSHAPE);
     }
-    if (ng == 8) {                       /* PATH hatte 8 Stufen, jetzt 9 (MORPH dazu): dieselbe Stufe behalten */
-        set.g[P_PATH - FK_NPA] = (uint8_t)(((set.g[P_PATH - FK_NPA] * 8 >> 7) * 128 + 64) / FK_NPATH);
-        for (i = 0; i < NSNAP; i++)
-            set.snaps[i].g[P_PATH - FK_NPA] = (uint8_t)(((set.snaps[i].g[P_PATH - FK_NPA] * 8 >> 7) * 128 + 64) / FK_NPATH);
-    }
+    if (ng > 4)                          /* PATH hatte 8 (ein OMEN) oder 9 Wege: jeder behält seinen */
+        path_remap((ng - 4) / 4, ng == 8 ? 8 : 9);
     return 1;
 }
 
