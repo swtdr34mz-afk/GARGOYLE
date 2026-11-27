@@ -1,5 +1,5 @@
 # GARGOYLE: the GROOVE. HOME twice, REC switches it on; ALGORITHM picks the style; every style recorded
-wait 4000
+wait 4500
 tapkey 7 100
 wait 1000
 tap HOME
@@ -21,47 +21,47 @@ turn K4 1
 expect grv3 36
 # every style: a screen and a recording
 wav s1.wav
-wait 4000
+wait 4500
 wavstop
 expect peak_db_min -40
 turn ALGO 1
 expect grv_style 1
 wav s2.wav
-wait 4000
+wait 4500
 wavstop
 shot s2.png
 turn ALGO 1
 wav s3.wav
-wait 4000
+wait 4500
 wavstop
 turn ALGO 1
 wav s4.wav
-wait 4000
+wait 4500
 wavstop
 turn ALGO 1
 wav s5.wav
-wait 4000
+wait 4500
 wavstop
 turn ALGO 1
 wav s6.wav
-wait 4000
+wait 4500
 wavstop
 turn ALGO 1
 wav s7.wav
-wait 4000
+wait 4500
 wavstop
 turn ALGO 1
 wav s8.wav
-wait 4000
+wait 4500
 wavstop
 turn ALGO 1
 wav s9.wav
-wait 4000
+wait 4500
 wavstop
 turn ALGO 1
 expect grv_style 9
 wav s10.wav
-wait 4000
+wait 4500
 wavstop
 shot s10.png
 turn ALGO 1

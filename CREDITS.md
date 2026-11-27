@@ -2,9 +2,8 @@
 
 GARGOYLE by swtdr34mz. The sound core (dsp/chip_core.c), the GROOVE (dsp/garg_groove.c), the screens and everything
 else are written for this project; all sounds are synthesized in the firmware, after the principles of the old sound
-chips (no code or sound of any chip or game). The pictures of the rooms were made by swtdr34mz with ChatGPT
-(tools/art/scenes.png, cut and reduced to a palette by tools/gen_art.py into art.h); the title lettering and the torch
-flames are drawn from code. No artwork, logo or name of any game is used.
+chips (no code or sound of any chip or game). The pictures of the rooms and the start screen were made by swtdr34mz with ChatGPT
+(tools/art/scenes.png, tools/art/splash.png, cut and reduced to a palette by tools/gen_art.py into art.h); the moving torch flames are drawn from code. No artwork, logo or name of any game is used.
 
 
 ## Built on

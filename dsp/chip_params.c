@@ -8,30 +8,30 @@ const fk_param_info FK_PARAMS[FK_NP] = {
     {"TORCH", 1}, {"PORTAL", 1}, {"AWAKEN", 0}, {"SLUMBER", 0},
     {"CREEP", 0}, {"WANDER", 0}, {"BITS", 0}, {"VOLUME", 0},
     {"FATE", 0}, {"QUEST", 0},
-    {"AGE", 0}, {"VIBRATO", 0}, {"SPEED", 0}, {"WIDTH", 0},
+    {"AGE", 0}, {"AURA", 0}, {"SPEED", 0}, {"WIDTH", 0},
 };
 
-/* AGE, VIBRATO, SPEED, WIDTH: wie sie anfangen */
-const uint8_t FK_GLOBAL_INIT[FK_NPG] = {10, 18, 50, 80};
+/* AGE, AURA, SPEED, WIDTH: wie sie anfangen (AURA an: ein Drone von Anfang an) */
+const uint8_t FK_GLOBAL_INIT[FK_NPG] = {10, 64, 50, 96};
 
 /*                                                CURSE HORDE RUNE ALCH  ECHO HAUNT DECAY DEPTH  TORCH PORTAL AWAKEN SLUMB  CREEP WANDER BITS VOL  FATE QUEST */
 const fk_algo_info FK_ALGOS[FK_NALGO] = {
-    {"TORCHLIGHT", "NES PULSE PAIR", "DUTY SWEEP", {64, 74, 40, 30, 46, 84, 50, 82, 58, 64, 30, 80, 16, 40, 60, 96, 3, 0}},
-    {"CRYPT CHOIR", "GAME BOY WAVES", "VOICING", {64, 80, 30, 50, 50, 86, 60, 86, 56, 64, 50, 90, 20, 50, 56, 100, 11, 20}},
-    {"GOBLIN CHORDS", "C64 ARPEGGIO", "OCTAVES", {64, 70, 20, 40, 44, 82, 50, 76, 60, 64, 24, 80, 10, 30, 60, 96, 7, 0}},
-    {"DRAGON BREATH", "NES NOISE", "NOISE / PULSE", {64, 72, 40, 70, 50, 86, 64, 90, 52, 64, 40, 88, 14, 40, 60, 92, 19, 0}},
-    {"PC SPEAKER", "1-BIT BEEPER", "REALSOUND", {74, 70, 60, 0, 48, 84, 56, 80, 54, 64, 20, 80, 10, 30, 50, 90, 5, 0}},
-    {"POKEY CURSE", "ATARI POLYS", "2ND CHANNEL", {64, 72, 40, 40, 46, 84, 60, 84, 56, 64, 30, 84, 14, 40, 56, 90, 13, 0}},
-    {"SID RITUAL", "C64 RING / SYNC", "RATIO", {40, 72, 50, 30, 46, 84, 56, 80, 60, 64, 36, 84, 16, 44, 60, 96, 23, 0}},
-    {"ADLIB HALL", "OPL FM", "MULTIPLE", {50, 72, 40, 30, 48, 84, 50, 84, 62, 64, 40, 88, 16, 44, 54, 96, 29, 0}},
-    {"BEHOLDER", "TRACKER VIBRATO", "VIBRATO", {64, 76, 40, 50, 50, 86, 56, 86, 58, 64, 40, 88, 16, 46, 60, 96, 31, 0}},
-    {"TREASURE", "FM BELLS", "BELL RATIO", {64, 70, 50, 40, 60, 90, 50, 92, 64, 64, 20, 92, 10, 30, 56, 96, 37, 30}},
-    {"SKELETON MARCH", "TRIANGLE + TICKS", "DENSITY", {64, 70, 30, 50, 44, 82, 64, 70, 60, 64, 20, 80, 10, 30, 60, 96, 41, 0}},
-    {"MAGE TOWER", "WAVE MORPH", "DRIFT SPEED", {70, 74, 40, 30, 50, 86, 56, 86, 58, 64, 44, 88, 16, 46, 58, 96, 43, 0}},
-    {"THRONE OF BONES", "OCTAVE ARPEGGIO", "OCTAVES", {64, 70, 50, 30, 46, 84, 56, 80, 58, 64, 24, 84, 10, 30, 60, 96, 47, 0}},
-    {"PIT OF DOOM", "DIVIDER LOGIC", "DEPTH", {64, 70, 40, 40, 44, 84, 60, 78, 52, 64, 30, 84, 14, 30, 64, 92, 53, 0}},
-    {"WIND OF ABYSS", "FILTERED NOISE", "STORM SPEED", {40, 74, 40, 30, 50, 86, 64, 90, 64, 64, 60, 96, 16, 50, 56, 96, 59, 0}},
-    {"SPELLBOOK", "RANDOM NOTES", "LEAPS", {70, 70, 30, 40, 64, 96, 56, 86, 60, 64, 20, 84, 8, 30, 60, 96, 61, 0}},
+    {"TORCHLIGHT", "NES PULSE PAIR", "DUTY SWEEP", {64, 74, 40, 30, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 3, 0}},
+    {"CRYPT CHOIR", "GAME BOY", "PULSE / WAVE", {64, 80, 40, 70, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 40, 96, 11, 20}},
+    {"GOBLIN CHORDS", "C64 ARPEGGIO", "OCTAVES", {64, 70, 20, 40, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 7, 0}},
+    {"DRAGON BREATH", "NES NOISE", "NOISE / PULSE", {64, 72, 40, 70, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 92, 19, 0}},
+    {"PC SPEAKER", "1-BIT BEEPER", "REALSOUND", {74, 70, 60, 0, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 50, 90, 5, 0}},
+    {"POKEY CURSE", "ATARI POLYS", "2ND CHANNEL", {64, 72, 40, 40, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 56, 90, 13, 0}},
+    {"SID RITUAL", "C64 RING / SYNC", "RATIO", {40, 72, 50, 30, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 23, 0}},
+    {"ADLIB HALL", "OPL FM", "MULTIPLE", {50, 72, 40, 30, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 54, 96, 29, 0}},
+    {"BEHOLDER", "TRACKER VIBRATO", "VIBRATO", {64, 76, 40, 50, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 31, 0}},
+    {"TREASURE", "FM BELLS", "BELL RATIO", {64, 70, 50, 40, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 56, 96, 37, 30}},
+    {"SKELETON MARCH", "TRIANGLE + TICKS", "DENSITY", {64, 70, 30, 50, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 41, 0}},
+    {"MAGE TOWER", "WAVE MORPH", "DRIFT SPEED", {70, 74, 40, 30, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 58, 96, 43, 0}},
+    {"THRONE OF BONES", "OCTAVE ARPEGGIO", "OCTAVES", {64, 70, 50, 30, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 47, 0}},
+    {"PIT OF DOOM", "DIVIDER LOGIC", "DEPTH", {64, 70, 40, 40, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 64, 92, 53, 0}},
+    {"WIND OF ABYSS", "FILTERED NOISE", "STORM SPEED", {40, 74, 40, 30, 60, 100, 74, 94, 46, 64, 66, 96, 30, 58, 56, 96, 59, 0}},
+    {"SPELLBOOK", "RANDOM NOTES", "LEAPS", {70, 70, 30, 40, 64, 100, 74, 94, 46, 64, 66, 96, 30, 58, 60, 96, 61, 0}},
 };
 
 static void vt_cat(char *d, const char *s)

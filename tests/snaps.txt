@@ -1,5 +1,5 @@
 # GARGOYLE: snapshots. SAVE held + one of the first eight white keys stores, SEL held + the key loads
-wait 4000
+wait 4500
 turn PRESET 4
 expect algo 4
 wait 100

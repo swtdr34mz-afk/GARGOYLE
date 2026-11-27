@@ -9,7 +9,7 @@
  * Jeder Style hat zwei Spuren über einen Takt aus 16 Schritten; DENSITY entscheidet, welche Schritte klingen. */
 #include "garg_groove.h"
 
-const char *const GR_STYLE_NAME[GR_NSTYLES] = {"HEARTBEAT", "FOOTSTEPS", "DRIPS", "CHAINS", "WINGS",
+const char *const GR_STYLE_NAME[GR_NSTYLES] = {"HEARTBEAT", "FOOTSTEPS", "STONES", "CHAINS", "WINGS",
                                                "RITUAL", "BELL", "BONES", "RUMBLE", "TORCH"};
 const char *const GR_PARAM_NAME[GR_NP] = {"DENSITY", "BREATH", "DISTANCE", "TEMPO", "LEVEL", "HUMAN", "FOLLOW", "TUNE"};
 /*                            DENS BRTH DIST TEMPO  LVL HUMAN FOLLOW TUNE */
@@ -30,7 +30,7 @@ typedef struct {
 static const gr_style STY[GR_NSTYLES] = {
     {"X...x...X...x...", ".X...x...X...x..", H_LUB, H_DUB, 0},          /* HEARTBEAT */
     {"X...x...X...x...", "..g...?...g...?.", H_STEP, H_SCRAPE, 1},       /* FOOTSTEPS */
-    {"?..?.?..x..?.?..", "X.......o.....?.", H_DRIP, H_DRIP, 0},         /* DRIPS */
+    {"X..x..?.x..?.o..", "....o.....g...?.", H_DRIP, H_BONELO, 0},     /* STONES */
     {"X.....?.x...o.?.", "..g.?...o..?..g.", H_CHAIN, H_RATTLE, 0},      /* CHAINS */
     {"X.......x.......", "....o.......?...", H_WING, H_WING, 2},         /* WINGS */
     {"X..x..x.X..x.o..", "....o.......g.?.", H_DRUM, H_SLAP, 0},         /* RITUAL */
@@ -180,11 +180,13 @@ static void gr_hit(int type, float vel, float rl, int wait, int accent)
     case H_SCRAPE:                       /* etwas schleift über den Boden */
         v->atk = 45.0f; v->dec = 0.18f; v->noise = 1.0f; v->nf = 1700.0f; v->nq = 0.25f; v->nsweep = 0.985f;
         v->gain = 0.3f; v->pan = (r - 0.5f) * 1.2f; break;
-    case H_DRIP: {                       /* ein Tropfen: der Ton springt nach oben, kurz, viel Hall */
-        static const float DEG[5] = {1.0f, 1.5f, 2.0f, 1.2f, 2.25f};
-        float f0 = rl * 8.0f * DEG[(int)(r * 4.99f)];
-        v->f = f0; v->fend = f0 * 2.3f; v->pdec = gr_db_coef(0.008f);
-        v->atk = 1.0f; v->dec = 0.07f; v->tone = 1.0f; v->gain = 0.55f; v->pan = (fk_rand01(&G.rng) - 0.5f) * 1.4f;
+    case H_DRIP: {                       /* STONES: ein Stein schlägt auf – ein tiefer, kurzer Knock (4-Bit-Dreieck, der
+                                          * Ton fällt), ein trockenes Klicken darauf; gestimmt auf Grundton, Quinte, Oktave */
+        static const float DEG[4] = {1.0f, 1.5f, 2.0f, 1.0f};
+        float f0 = rl * 2.0f * DEG[(int)(r * 3.99f)];
+        v->f = f0 * 1.8f; v->fend = f0; v->pdec = gr_db_coef(0.012f);
+        v->atk = 0.5f; v->dec = 0.09f; v->tone = 1.0f; v->noise = 0.18f; v->nf = 900.0f; v->nq = 0.3f;
+        v->gain = 0.7f; v->pan = (fk_rand01(&G.rng) - 0.5f) * 1.0f;
         break;
     }
     case H_CHAIN:                        /* Kettenglieder: Metall, mehrmals kurz hintereinander */

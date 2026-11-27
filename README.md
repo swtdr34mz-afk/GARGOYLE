@@ -21,24 +21,24 @@ One knob, one parameter (like FIKH-S), six pages:
 | HOME | SUMMON | CURSE (ring / sync, FM) | HORDE (octaves / detune) | RUNE (wave, duty, table) | ALCHEMY (per algorithm) |
 | HOME 2× | GROOVE | DENSITY | BREATH | DISTANCE | TEMPO |
 | HOME 3× | SETUP | LEVEL | HUMAN | FOLLOW | TUNE |
-| FX | ECHO | ECHO (mix) | HAUNT (feedback, left ping-pong) | DECAY (duller, grainier) | DEPTH (time) |
+| FX | ECHO | ECHO (mix) | HAUNT (feedback, left ping-pong, fully out endless) | DECAY (echoes turn into a fog: duller, washed, grainy at the top) | DEPTH (time) |
 | ENV | RITUAL | TORCH (low / high pass) | PORTAL (±24 semitones) | AWAKEN (attack) | SLUMBER (release) |
-| EDIT | LORE | CREEP (glide) | WANDER (drift) | BITS (16 .. 1 bit) | VOLUME |
-| LFO | SPELL | AGE (sample rate down to 2 kHz) | VIBRATO | SPEED (vibrato, arpeggios, patterns) | WIDTH |
+| EDIT | LORE | CREEP (everything glides: pitch up to 12 s, knobs up to 8 s) | WANDER (pitch, timbre, filter, pan and level drift by themselves) | BITS (16 .. 1 bit) | VOLUME |
+| LFO | SPELL | AGE (sample rate down to 2 kHz) | AURA (a resonator: chip tones ring into a drone) | SPEED (arpeggios, patterns) | WIDTH |
 
 SELECT is **WRATH**, one macro over everything for live play (past half the dragon appears). PRESET picks the
 algorithm, ALGORITHM is QUEST (its variants, coarse), REC is FATE (dice; held 1 s: deep). PLAY: HOLD, ARP: FREEZE (the
 echo holds), SEQ held: factory sound, GLO: levels, SAVE + key / SEL + key: 8 snapshots. MIDI: notes, pitch bend,
 CC 1 RUNE, CC 70–73 CURSE HORDE RUNE ALCHEMY, CC 75 WRATH, clock / start / stop for the GROOVE.
 
-**The 16 algorithms:** TORCHLIGHT (NES pulse pair), CRYPT CHOIR (Game Boy waves), GOBLIN CHORDS (C64 arpeggio),
+**The 16 algorithms:** TORCHLIGHT (NES pulse pair), CRYPT CHOIR (Game Boy: two pulse channels, the 4-bit wave channel, sweep), GOBLIN CHORDS (C64 arpeggio),
 DRAGON BREATH (NES noise), PC SPEAKER (1-bit beeper), POKEY CURSE (Atari polys), SID RITUAL (C64 ring / sync), ADLIB
 HALL (OPL FM), BEHOLDER (tracker vibrato), TREASURE (FM bells), SKELETON MARCH (triangle and ticks), MAGE TOWER (wave
 morph), THRONE OF BONES (octave arpeggio), PIT OF DOOM (divider logic), WIND OF ABYSS (filtered noise), SPELLBOOK
-(random notes). No reverb: an echo that stores 8 bits, every repeat a little grainier.
+(random notes). No reverb: an echo that DECAY turns into a fog. Every sound fades in slowly from the factory, WANDER makes it drift.
 
 **GROOVE:** ten styles of dungeon noises as the old consoles made them (square, 4-bit triangle, the noise register,
-16 volume steps, 60 frames a second, 6 bits): HEARTBEAT, FOOTSTEPS, DRIPS, CHAINS, WINGS, RITUAL, BELL, BONES, RUMBLE,
+16 volume steps, 60 frames a second, 6 bits): HEARTBEAT, FOOTSTEPS, STONES, CHAINS, WINGS, RITUAL, BELL, BONES, RUMBLE,
 TORCH, tuned to the drone, with a pump (BREATH).
 
 ## Building

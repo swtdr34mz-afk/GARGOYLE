@@ -9,10 +9,11 @@
  * Die Regler (wie bei FIKH-S, eigene Namen):
  *   HOME  CURSE (Kreuzmodulation: links Ring, rechts Sync/FM), HORDE (die Stimmen: links Oktaven, rechts Verstimmung),
  *         RUNE (Wellenform, Pulsbreite, Tabelle), ALCHEMY (je Algorithmus)
- *   FX    ECHO (trocken/nass), HAUNT (Rückkopplung: links Ping-Pong, rechts gerade), DECAY (die Wiederholungen dumpfer
- *         und körniger), DEPTH (die Zeit)
+ *   FX    ECHO (trocken/nass), HAUNT (Rückkopplung: links Ping-Pong, rechts gerade, ganz außen endlos), DECAY (aus
+ *         Echos wird Nebel: dumpfer, verwaschen, ganz oben körnig wie 8 Bit), DEPTH (die Zeit)
  *   ENV   TORCH (Filter: links Tiefpass, rechts Hochpass), PORTAL (Tonhöhe ±24 Halbtöne), AWAKEN, SLUMBER (Hüllkurve)
- *   EDIT  CREEP (Gleiten), WANDER (Drift), BITS (16 .. 1 Bit), VOLUME
+ *   EDIT  CREEP (alles gleitet: die Tonhöhe bis 12 s, jeder Regler zieht langsam nach), WANDER (der Klang wandert von
+ *         selbst: Stimmung, Klangfarbe, Filter, Panorama, Atem), BITS (16 .. 1 Bit), VOLUME
  *   LFO   AGE (die Abtastrate, bis 2 kHz), VIBRATO, SPEED (Vibrato, Arpeggios, Takt der Muster), WIDTH (für alle gleich)
  *   FATE  (REC) würfelt: Tabellen, Verstimmungen, Muster       QUEST (ALGORITHM) fährt die Varianten durch
  * Float, 44,1 kHz, Stereo. Die Namen fk_ stammen vom Vorgänger (FIKH-S): dieselbe Schnittstelle. */
@@ -31,7 +32,7 @@ enum {
     P_CREEP, P_WANDER, P_BITS, P_VOLUME,     /* EDIT */
     P_FATE, P_QUEST,                         /* REC, ALGORITHM */
     FK_NPA,                                  /* bis hier: je Algorithmus; danach für alle gleich */
-    P_AGE = FK_NPA, P_VIBRATO, P_SPEED, P_WIDTH,   /* LFO */
+    P_AGE = FK_NPA, P_AURA, P_SPEED, P_WIDTH,      /* LFO */
     FK_NP
 };
 #define FK_NPG (FK_NP - FK_NPA)
@@ -51,10 +52,15 @@ typedef struct {
 } fk_algo_info;
 extern const fk_algo_info FK_ALGOS[FK_NALGO];
 
-/* der Speicher: das Echo, 8 Bit je Sample (wie damals) */
-#define FK_EC_N 32768u                       /* je Kanal: 0,74 s */
+/* der Speicher: das Echo (16 Bit, 0,74 s je Kanal) und seine Diffusoren (der Nebel, der aus Echos Flächen macht) */
+#define FK_EC_N 32768u
+#define FK_DF_N 6400u                        /* acht Allpässe, float */
+#define FK_RS_N 2048u                        /* AURA: je Kammfilter des Resonators (float): bis 21,5 Hz */
+#define FK_NRES 8                            /* vier je Kanal */
 typedef struct {
-    int8_t *ec[2];
+    int16_t *ec[2];
+    float *df;
+    float *res[FK_NRES];
 } fk_mem;
 
 void fk_init(const fk_mem *m);

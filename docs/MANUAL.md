@@ -12,7 +12,7 @@ knobs are four heroes with fixed colours.
 RUNE (wave, duty, table), ALCHEMY (per algorithm, shown when turned). HOME 2×/3×: GROOVE and SETUP. FX ECHO: ECHO, HAUNT
 (feedback, left ping-pong), DECAY (duller, grainier repeats), DEPTH. ENV RITUAL: TORCH (left low pass, right high
 pass), PORTAL (a detent a semitone, ±24), AWAKEN, SLUMBER. EDIT LORE: CREEP, WANDER, BITS (16 .. 1), VOLUME. LFO
-SPELL (all algorithms): AGE (sample rate down to 2 kHz), VIBRATO (stepped like a tracker), SPEED (1–60 Hz: vibrato,
+SPELL (all algorithms): AGE (sample rate down to 2 kHz), AURA (a resonator on root, fifth and octaves: the chip tones ring on into a drone), SPEED (1–60 Hz:
 arpeggios, patterns), WIDTH.
 
 **Algorithms (PRESET):** 1 TORCHLIGHT, 2 CRYPT CHOIR, 3 GOBLIN CHORDS, 4 DRAGON BREATH, 5 PC SPEAKER, 6 POKEY CURSE,
@@ -22,7 +22,7 @@ factory sound.
 
 **WRATH (SELECT):** one macro over everything for live play, 4 a detent.
 
-**GROOVE:** HOME twice, REC on/off, ALGORITHM style: HEARTBEAT, FOOTSTEPS, DRIPS, CHAINS, WINGS, RITUAL, BELL, BONES,
+**GROOVE:** HOME twice, REC on/off, ALGORITHM style: HEARTBEAT, FOOTSTEPS, STONES, CHAINS, WINGS, RITUAL, BELL, BONES,
 RUMBLE, TORCH – chiptune sound effects (square, 4-bit triangle, noise register, 16 volume steps, 60 frames a second),
 tuned to the drone. DENSITY, BREATH, DISTANCE, TEMPO; SETUP: LEVEL, HUMAN, FOLLOW, TUNE. Follows a MIDI clock.
 

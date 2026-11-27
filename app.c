@@ -12,7 +12,7 @@
  *   FX         ECHO:   ECHO, HAUNT, DECAY, DEPTH (das 8-Bit-Echo)
  *   ENV        RITUAL: TORCH, PORTAL, AWAKEN, SLUMBER
  *   EDIT       LORE:   CREEP, WANDER, BITS, VOLUME
- *   LFO        SPELL:  AGE, VIBRATO, SPEED, WIDTH (für alle Algorithmen gleich)
+ *   LFO        SPELL:  AGE, AURA (der Resonator: aus Chip-Tönen wird eine Fläche), SPEED, WIDTH (für alle gleich)
  *   SELECT     WRATH: ein Makro über allem, für live, 4 je Raste
  *   PRESET     der Algorithmus (16, in zwei Bänken)
  *   ALGORITHM  QUEST (grob, für live); auf den GROOVE-Seiten: der Style
@@ -33,10 +33,12 @@
 #define SR 44100.0f
 
 /* ------------------------------------------------------- der Klang-Speicher --- */
-static int8_t mem_ec[2][FK_EC_N] __attribute__((section(".pool")));
+static int16_t mem_ec[2][FK_EC_N] __attribute__((section(".pool")));
+static float mem_df[FK_DF_N] __attribute__((section(".pool")));
+static float mem_res[FK_NRES][FK_RS_N] __attribute__((section(".pool")));
 
 /* ------------------------------------------------------------- Speicher --- */
-#define SET_MAGIC 0x32475247u            /* "GRG2": der 8-Bit-Kern */
+#define SET_MAGIC 0x34475247u            /* "GRG4": mit AURA */
 #define NSNAP 8
 typedef struct {
     uint8_t used, algo, oct, rsv;
@@ -65,7 +67,6 @@ static void settings_defaults(void)
     memset(&set, 0, sizeof set);
     set.magic = SET_MAGIC;
     set.oct = 2;                         /* 0..4 = -2..+2: die Tasten F3..G5 */
-    set.hold = 1;                        /* ein Drone-Synth: HOLD ist an */
     for (a = 0; a < FK_NALGO; a++)
         algo_defaults(a);
     memcpy(set.g, FK_GLOBAL_INIT, FK_NPG);
@@ -170,7 +171,7 @@ static const uint8_t PAGE_IDX[NPAGES][4] = {
     {P_ECHO, P_HAUNT, P_DECAY, P_DEPTH},
     {P_TORCH, P_PORTAL, P_AWAKEN, P_SLUMBER},
     {P_CREEP, P_WANDER, P_BITS, P_VOLUME},
-    {P_AGE, P_VIBRATO, P_SPEED, P_WIDTH},
+    {P_AGE, P_AURA, P_SPEED, P_WIDTH},
 };
 
 static uint8_t *pval(int p) { return p >= FK_NPA ? &set.g[p - FK_NPA] : &set.p[set.algo][p]; }
@@ -1333,71 +1334,86 @@ static void draw(uint32_t m)
         region(6, (int32_t)MY0, 234, 236);
 }
 
-/* ---- die Eröffnung: schwarz; zwei Fackeln entzünden sich (Pixel-Flammen wie in den DOS-Spielen), darunter
- * erscheint GARGOYLE in gehauenen Goldbuchstaben ---- */
-#define INTRO_MS 3000u
-#define TITLE_Y 128
-static void pix_torch(int32_t x, int32_t y, float t, float on, int seed)
+/* ---- die Eröffnung: Toms Bild (tools/art/splash.png); die vier Fackeln brennen (Pixel-Flammen wie in den DOS-
+ * Spielen), ihr Licht flackert über die Wände ---- */
+#define INTRO_MS 4200u
+#define SPL_Y ((240 - ART_SH) / 2)
+/* die Fackeln im Bild (in seinen Pixeln, 1672 breit): Mitte, Fuß der Flamme, Breite, Höhe */
+static const float SPL_TORCH[4][4] = {{102, 476, 104, 128}, {1570, 476, 104, 128}, {490, 314, 46, 66}, {1185, 314, 46, 66}};
+static float torch_fl(float t, int i)
 {
-    int32_t i, j;
-    int fr = ((int)(t * 12.0f) + seed * 3) % ART_FN;
-    const uint8_t *f = ART_FLAME[fr];
-    float fl = 0.85f + 0.15f * fm_sinf(t * 19.0f + (float)seed);
-    s_bloom((float)x, (float)y + 22.0f, 60.0f, rgb3(255, 120, 30), 0.16f * on * fl);
-    for (j = 0; j < 16; j++)             /* die Fackel: Holz, oben ein Eisenkorb */
-        for (i = -3; i <= 2; i++) {
-            int32_t yy = y + 52 + j * 2;
-            col3 c = j < 3 ? rgb3(70, 66, 70) : rgb3(i < -1 ? 70 : i > 0 ? 46 : 96, i < -1 ? 42 : i > 0 ? 28 : 62, i < -1 ? 22 : i > 0 ? 14 : 30);
-            if (j < 3 && (i == -3 || i == 2))
-                c = rgb3(110, 104, 110);
-            s_rect((float)(x + i * 2), (float)yy, 2.0f, 2.0f, c, 1.0f);
-        }
-    s_rect((float)x - 10.0f, (float)y + 78.0f, 20.0f, 3.0f, rgb3(60, 56, 60), 1.0f);   /* die Halterung an der Wand */
-    for (j = 0; j < ART_FH; j++)         /* die Flamme: 2x2-Pixel, wie damals */
-        for (i = 0; i < ART_FW; i++) {
-            uint8_t v = f[j * ART_FW + i];
+    return 0.82f + 0.10f * fm_sinf(t * 17.0f + (float)i * 2.1f) + 0.06f * fm_sinf(t * 29.0f + (float)i) +
+           0.05f * fm_sinf(t * 7.3f + (float)i * 4.0f);
+}
+static void pix_flame(float cx, float base, float w, float h, int fr, float on)
+{
+    const uint8_t *f = ART_FLAME[fr % ART_FN];
+    int32_t x, y, x0 = (int32_t)(cx - w * 0.5f), y0 = (int32_t)(base - h);
+    for (y = y0; y < (int32_t)base; y++) {
+        int j = (int)((float)(y - y0) / h * (float)ART_FH);
+        if (y < g_y0 || y >= g_y1 || j < 0 || j >= ART_FH)
+            continue;
+        for (x = x0; x < x0 + (int32_t)w; x++) {
+            int i = (int)((float)(x - x0) / w * (float)ART_FW);
+            uint8_t v = f[j * ART_FW + (i < 0 ? 0 : i >= ART_FW ? ART_FW - 1 : i)];
             const uint8_t *c;
-            if (!v)
+            if (v < 2 || x < 0 || x >= 240)
                 continue;
             c = ART_FLAME_PAL[v];
-            s_rect((float)(x - ART_FW + i * 2), (float)(y + j * 2), 2.0f, 2.0f,
-                   rgb3((float)c[0], (float)c[1], (float)c[2]), on * (v > 2 ? 1.0f : 0.7f));
+            px_blend(x, y, rgb3((float)c[0], (float)c[1], (float)c[2]), on * (v > 3 ? 1.0f : 0.6f));
         }
+    }
 }
 static void intro_scene(float t, int32_t y0, int32_t h)
 {
-    float on0 = sat01((t - 0.15f) / 0.25f), on1 = sat01((t - 0.45f) / 0.25f), txt = sat01((t - 0.7f) / 0.7f);
-    int32_t x, y, ya, yb;
+    float on = sat01(t / 0.6f), lx[4], ly[4], li[4];
+    int32_t x, y, i;
     g_ox = 0;
     g_x0 = 0;
     g_x1 = 240;
     g_y0 = y0;
     g_y1 = y0 + h;
     cv_oy = -y0;
-    for (y = 0; y < h; y++)
-        for (x = 0; x < 240; x++)
-            cv_px[(uint32_t)y * 240u + (uint32_t)x] = 0;
-    pix_torch(62, 22, t, on0, 0);
-    pix_torch(178, 22, t + 0.37f, on1, 1);
-    ya = TITLE_Y > g_y0 ? TITLE_Y : g_y0;
-    yb = TITLE_Y + ART_TH < g_y1 ? TITLE_Y + ART_TH : g_y1;
-    if (txt > 0.0f) {                    /* der Name: gehauen, Gold bis Rot, er flackert im Fackellicht */
-        float fl = 0.88f + 0.08f * fm_sinf(t * 19.0f) + 0.06f * fm_sinf(t * 7.0f);
-        int32_t ox = (240 - ART_TW) / 2;
-        for (y = ya; y < yb; y++)
-            for (x = 0; x < ART_TW; x++) {
-                uint32_t k = (uint32_t)(y - TITLE_Y) * ART_TW + (uint32_t)x;
-                uint8_t a = ART_TITLE_A[k];
-                uint16_t c;
-                if (!a)
-                    continue;
-                c = ART_TITLE[k];
-                px_blend(ox + x, y, rgb3((float)(c >> 11) * 8.2f * fl, (float)((c >> 5) & 63u) * 4.05f * fl,
-                                         (float)(c & 31u) * 8.2f * fl), (float)a / 255.0f * txt);
-            }
-        s_ctext(120.0f, (float)TITLE_Y + (float)ART_TH + 10.0f, &FONT_SERIF_XS, "DRONE SYNTH  BY SWTDR34MZ",
-                c565(mix3(rgb3(0, 0, 0), GOLD, sat01(txt * 1.5f - 0.5f))), 1);
+    for (i = 0; i < 4; i++) {
+        lx[i] = SPL_TORCH[i][0] * ART_SSCALE;
+        ly[i] = (float)SPL_Y + (SPL_TORCH[i][1] - SPL_TORCH[i][3] * 0.4f) * ART_SSCALE;
+        li[i] = torch_fl(t, (int)i) * (i < 2 ? 1.0f : 0.6f);
     }
+    for (y = 0; y < h; y++) {
+        int32_t sy = y0 + y - SPL_Y;
+        uint16_t *row = cv_px + (uint32_t)y * 240u;
+        if (sy < 0 || sy >= ART_SH) {
+            for (x = 0; x < 240; x++)
+                row[x] = 0;
+            continue;
+        }
+        for (x = 0; x < 240; x++) {      /* das Bild, das Licht der Fackeln flackert darüber */
+            uint16_t c = ART_SPL_PAL[ART_SPL[(uint32_t)sy * ART_SW + (uint32_t)x]];
+            float L = 0.62f;
+            int32_t r, g, b, k;
+            for (i = 0; i < 4; i++) {
+                float dx = (float)x - lx[i], dy = (float)(y0 + y) - ly[i], d2 = dx * dx + dy * dy;
+                L += li[i] * 0.55f / (1.0f + d2 * (i < 2 ? 0.0011f : 0.004f));
+            }
+            k = (int32_t)(L * on * 256.0f);
+            r = ((int32_t)(c >> 11) * k) >> 8;
+            g = ((int32_t)((c >> 5) & 63u) * k) >> 8;
+            b = ((int32_t)(c & 31u) * k) >> 8;
+            r = r > 31 ? 31 : r;
+            g = g > 63 ? 63 : g;
+            b = b > 31 ? 31 : b;
+            row[x] = swap16((uint16_t)(r << 11 | g << 5 | b));
+        }
+    }
+    for (i = 0; i < 4; i++) {            /* die Flammen: sie bewegen sich, jede in ihrem Takt */
+        float w = SPL_TORCH[i][2] * ART_SSCALE, hh = SPL_TORCH[i][3] * ART_SSCALE * 1.15f;
+        float base = (float)SPL_Y + SPL_TORCH[i][1] * ART_SSCALE;
+        s_bloom(lx[i], ly[i], (i < 2 ? 26.0f : 14.0f) * li[i], rgb3(255, 140, 40), 0.22f * on * li[i]);
+        pix_flame(lx[i], base, w, hh, (int)(t * 13.0f) + (int)i * 3, on);
+    }
+    if (t > 0.8f)
+        s_ctext(120.0f, (float)(SPL_Y + ART_SH + 14), &FONT_SERIF_XS, "8-BIT DRONE SYNTH  BY SWTDR34MZ",
+                c565(mix3(rgb3(0, 0, 0), GOLD, sat01((t - 0.8f) / 0.6f))), 1);
     cv_oy = 0;
 }
 
@@ -1418,7 +1434,11 @@ void app_init(void)
     int i;
     m.ec[0] = mem_ec[0];
     m.ec[1] = mem_ec[1];
+    m.df = mem_df;
+    for (i = 0; i < FK_NRES; i++)
+        m.res[i] = mem_res[i];
     settings_load();
+    set.hold = 0;                        /* nach dem Start still: HOLD aus, bis man es will */
     fk_init(&m);
     gr_init();
     gr_settings(&set.grv);
