@@ -58,7 +58,9 @@ ein Knopf überspringt das. Nach dem Start ist es still (HOLD aus): PLAY schalte
   demselben Ziel, zählen sie zusammen (für alle Algorithmen gleich): **RATE** (frei von
   einer Welle pro Minute bis 20 Hz; läuft der GROOVE, in Notenwerten: 4 Takte bis 1/32, an jedem Takt ausgerichtet,
   auch mit MIDI-Clock), **SHAPE** (SINE, TRIANGLE, SAW, SQUARE, STAIRS – das Dreieck in 8 Stufen wie im Chip –,
-  CHANCE – je Welle ein Zufallswert), **POWER** (wie stark; ganz links aus), **PATH** (wohin – immer der Klang, nie das
+  CHANCE – je Welle ein Zufallswert, DRIFT – weicher Zufall, der gleitet, SWELL – langsam an, schnell zurück,
+  HEART – lub-dub, BOUNCE – ein fallender Ball, CHAOS – ein Lorenz-Attraktor, nie zweimal gleich, TURING – 8 Stufen
+  im Kreis, selten ändert sich eine), **POWER** (wie stark; ganz links aus), **PATH** (wohin – immer der Klang, nie das
   Stereofeld): BREATH (das Filter atmet zu und auf, leiser im Ausatmen), FLAME (ein tiefes Filter-Auf-und-Zu),
   HAUNT (Vibrato bis ±60 Cent), AURA (der Resonator schwillt an), RUNE (Welle, Pulsbreite, Tabelle und ALCHEMY
   wandern), CURSE (Ring / Sync / FM pumpen – springt wie ein Arpeggio), DECAY (Bits und Abtastrate zerfallen im

@@ -1,8 +1,11 @@
-**GARGOYLE v0.1.4**
+**GARGOYLE v0.1.5**
 
-- **four LFOs**: press LFO again and again for OMEN I, II, III, IV – each with its own RATE, SHAPE, POWER and PATH, free or locked to the GROOVE
-- several LFOs on the same target add up (e.g. a slow BREATH over 4 bars plus a fast FLAME in 1/16)
-- new PATH **MORPH**: the LFO pushes the sound into the next algorithm and back
-- every OMEN has its own colour (violet, green, amber, blue); its number glows in the dome with its LFO
+Six new LFO shapes for the four OMENs, made for drones (now 12, one per detent):
+- **DRIFT**: smooth random that glides from value to value – alive, never mechanical
+- **SWELL**: rises slowly and ever faster, falls back quickly – like a wave rolling in
+- **HEART**: a lub-dub double beat and a rest, great together with the HEARTBEAT groove
+- **BOUNCE**: a falling ball, the bounces get smaller and faster
+- **CHAOS**: a real Lorenz attractor – structured, but never the same twice
+- **TURING**: 8 random steps in a loop, now and then one of them changes
 
-Install: download the .fwsc below and flash it with the M-Flasher. Your sounds and snapshots stay; your LFO becomes OMEN I, the other three start switched off.
+Install: download the .fwsc below and flash it with the M-Flasher. Your sounds, LFOs and snapshots stay.

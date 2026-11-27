@@ -38,7 +38,8 @@ static float mem_df[FK_DF_N] __attribute__((section(".pool")));
 static float mem_res[FK_NRES][FK_RS_N] __attribute__((section(".pool")));
 
 /* ------------------------------------------------------------- Speicher --- */
-#define SET_MAGIC 0x37475247u            /* "GRG7": vier OMEN */
+#define SET_MAGIC 0x38475247u            /* "GRG8": vier OMEN mit zwölf Formen */
+#define SET_MAGIC7 0x37475247u           /* "GRG7" (v0.1.4): vier OMEN, sechs Formen */
 #define SET_MAGIC6 0x36475247u           /* "GRG6" (v0.1.2, v0.1.3): ein OMEN */
 #define SET_MAGIC4 0x34475247u           /* "GRG4" (v0.1.0): wird übernommen, QUEST auf 0 */
 #define SET_MAGIC5 0x35475247u           /* "GRG5" (v0.1.1): wird übernommen */
@@ -78,11 +79,12 @@ static void settings_defaults(void)
 }
 
 /* ältere Speicherstände übernehmen: v0.1.0 (GRG4, QUEST war die Variante) und v0.1.1 (GRG5) mit 4 globalen Reglern,
- * v0.1.2 / v0.1.3 (GRG6) mit 8 (ein OMEN); sonst gleich gebaut, nur Bytes hintereinander */
+ * v0.1.2 / v0.1.3 (GRG6) mit 8 (ein OMEN), v0.1.4 (GRG7) mit 20, aber 6 Formen; sonst gleich gebaut */
 static int settings_migrate(const uint8_t *o, int got)
 {
     uint32_t mg = (uint32_t)o[0] | (uint32_t)o[1] << 8 | (uint32_t)o[2] << 16 | (uint32_t)o[3] << 24;
-    int ng = mg == SET_MAGIC4 || mg == SET_MAGIC5 ? 4 : mg == SET_MAGIC6 ? 8 : 0, a, i, q = mg == SET_MAGIC4;
+    int ng = mg == SET_MAGIC4 || mg == SET_MAGIC5 ? 4 : mg == SET_MAGIC6 ? 8 : mg == SET_MAGIC7 ? FK_NPG : 0, a, i, l,
+        q = mg == SET_MAGIC4;
     int size = 4 + 4 + FK_NALGO * FK_NPA + ng + (int)sizeof(gr_set) + 2 + NSNAP * (4 + FK_NPA + ng);
     const uint8_t *r;
     if (!ng || got != ((size + 3) & ~3))
@@ -113,6 +115,12 @@ static int settings_migrate(const uint8_t *o, int got)
     }
     for (a = 0; q && a < FK_NALGO; a++)
         set.p[a][P_QUEST] = 0;
+    for (l = 0; l < (ng - 4) / 4; l++) {  /* SHAPE hatte 6 Formen, jetzt 12: dieselbe Form behalten */
+        int k = P_SHAPE - FK_NPA + 4 * l;
+        set.g[k] = (uint8_t)(((set.g[k] * 6 >> 7) * 128 + 64) / FK_NSHAPE);
+        for (i = 0; i < NSNAP; i++)
+            set.snaps[i].g[k] = (uint8_t)(((set.snaps[i].g[k] * 6 >> 7) * 128 + 64) / FK_NSHAPE);
+    }
     if (ng == 8) {                       /* PATH hatte 8 Stufen, jetzt 9 (MORPH dazu): dieselbe Stufe behalten */
         set.g[P_PATH - FK_NPA] = (uint8_t)(((set.g[P_PATH - FK_NPA] * 8 >> 7) * 128 + 64) / FK_NPATH);
         for (i = 0; i < NSNAP; i++)
