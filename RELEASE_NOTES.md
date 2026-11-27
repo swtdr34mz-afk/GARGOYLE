@@ -1,11 +1,7 @@
-**GARGOYLE v0.1.5**
+**GARGOYLE v0.1.6**
 
-Six new LFO shapes for the four OMENs, made for drones (now 12, one per detent):
-- **DRIFT**: smooth random that glides from value to value – alive, never mechanical
-- **SWELL**: rises slowly and ever faster, falls back quickly – like a wave rolling in
-- **HEART**: a lub-dub double beat and a rest, great together with the HEARTBEAT groove
-- **BOUNCE**: a falling ball, the bounces get smaller and faster
-- **CHAOS**: a real Lorenz attractor – structured, but never the same twice
-- **TURING**: 8 random steps in a loop, now and then one of them changes
+- **27 snapshots**: every key is one now, the black keys too. Hold SAVE and press a key to store, hold SEL and press it to load
+- while SAVE or SEL is held, a little keyboard at the bottom shows which keys hold a snapshot; the message names the key (e.g. SNAP C#4)
+- your 8 snapshots stay on the keys they were on
 
-Install: download the .fwsc below and flash it with the M-Flasher. Your sounds, LFOs and snapshots stay.
+Install: download the .fwsc below and flash it with the M-Flasher. Your sounds and snapshots stay.

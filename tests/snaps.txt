@@ -1,4 +1,4 @@
-# GARGOYLE: snapshots. SAVE held + one of the first eight white keys stores, SEL held + the key loads
+# GARGOYLE: snapshots. SAVE held + any key stores (27), SEL held + the key loads
 wait 4500
 turn PRESET 4
 expect algo 4
@@ -12,8 +12,8 @@ key 2 down 100
 wait 50
 key 2 up
 release SAVE
-expect snap 2
-expect snapused2 1
+expect snap 3
+expect snapused3 1
 turn PRESET 9
 expect algo 13
 turn K1 -4 120
@@ -32,3 +32,19 @@ wait 50
 key 4 up
 release SEL
 expect algo 4
+# a black key and the top key are snapshots too
+press SAVE
+key 1 down 100
+wait 50
+key 1 up
+key 26 down 100
+wait 50
+key 26 up
+release SAVE
+expect snapused2 1
+expect snapused27 1
+expect snap 27
+press SEL
+wait 100
+shot snapkeys.png
+release SEL

@@ -28,5 +28,5 @@ factory sound.
 RUMBLE, TORCH – chiptune sound effects (square, 4-bit triangle, noise register, 16 volume steps, 60 frames a second),
 tuned to the drone. DENSITY, BREATH, DISTANCE, TEMPO; SETUP: LEVEL, HUMAN, FOLLOW, TUNE. Follows a MIDI clock.
 
-**More:** PLAY HOLD, ARP FREEZE, SAVE, snapshots (SAVE / SEL + one of the first eight white keys). MIDI: notes,
+**More:** PLAY HOLD, ARP FREEZE, SAVE, 27 snapshots (SAVE / SEL + any key). MIDI: notes,
 pitch bend ±2, CC 1 RUNE, CC 70–73 CURSE HORDE RUNE ALCHEMY, CC 75 WRATH, clock / start / stop.

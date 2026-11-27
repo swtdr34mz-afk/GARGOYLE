@@ -38,12 +38,14 @@ static float mem_df[FK_DF_N] __attribute__((section(".pool")));
 static float mem_res[FK_NRES][FK_RS_N] __attribute__((section(".pool")));
 
 /* ------------------------------------------------------------- Speicher --- */
-#define SET_MAGIC 0x38475247u            /* "GRG8": vier OMEN mit zwölf Formen */
+#define SET_MAGIC 0x39475247u            /* "GRG9": 27 Snapshots */
+#define SET_MAGIC8 0x38475247u           /* "GRG8" (v0.1.5): 8 Snapshots */
 #define SET_MAGIC7 0x37475247u           /* "GRG7" (v0.1.4): vier OMEN, sechs Formen */
 #define SET_MAGIC6 0x36475247u           /* "GRG6" (v0.1.2, v0.1.3): ein OMEN */
 #define SET_MAGIC4 0x34475247u           /* "GRG4" (v0.1.0): wird übernommen, QUEST auf 0 */
 #define SET_MAGIC5 0x35475247u           /* "GRG5" (v0.1.1): wird übernommen */
-#define NSNAP 8
+#define NSNAP NKEYS                     /* jede Taste ein Snapshot */
+#define NSNAP_OLD 8                      /* bis v0.1.5: die ersten acht weißen Tasten */
 typedef struct {
     uint8_t used, algo, oct, rsv;
     uint8_t p[FK_NPA];
@@ -83,9 +85,10 @@ static void settings_defaults(void)
 static int settings_migrate(const uint8_t *o, int got)
 {
     uint32_t mg = (uint32_t)o[0] | (uint32_t)o[1] << 8 | (uint32_t)o[2] << 16 | (uint32_t)o[3] << 24;
-    int ng = mg == SET_MAGIC4 || mg == SET_MAGIC5 ? 4 : mg == SET_MAGIC6 ? 8 : mg == SET_MAGIC7 ? FK_NPG : 0, a, i, l,
-        q = mg == SET_MAGIC4;
-    int size = 4 + 4 + FK_NALGO * FK_NPA + ng + (int)sizeof(gr_set) + 2 + NSNAP * (4 + FK_NPA + ng);
+    static const uint8_t OKEY[NSNAP_OLD] = {0, 2, 4, 6, 7, 9, 11, 12};   /* wo die alten acht lagen */
+    int ng = mg == SET_MAGIC4 || mg == SET_MAGIC5 ? 4 : mg == SET_MAGIC6 ? 8 : mg == SET_MAGIC7 || mg == SET_MAGIC8 ? FK_NPG : 0;
+    int a, i, l, q = mg == SET_MAGIC4, sh6 = mg == SET_MAGIC6 || mg == SET_MAGIC7;
+    int size = 4 + 4 + FK_NALGO * FK_NPA + ng + (int)sizeof(gr_set) + 2 + NSNAP_OLD * (4 + FK_NPA + ng);
     const uint8_t *r;
     if (!ng || got != ((size + 3) & ~3))
         return 0;
@@ -93,7 +96,7 @@ static int settings_migrate(const uint8_t *o, int got)
     set.algo = o[4];
     set.oct = o[5];
     set.hold = o[6];
-    set.snap = o[7];
+    set.snap = o[7] >= 1u && o[7] <= NSNAP_OLD ? (uint8_t)(OKEY[o[7] - 1u] + 1u) : 0u;
     r = o + 8;
     memcpy(set.p, r, sizeof set.p);
     r += sizeof set.p;
@@ -103,19 +106,20 @@ static int settings_migrate(const uint8_t *o, int got)
     r += sizeof set.grv;
     set.wrath = r[0];
     r += 2;
-    for (i = 0; i < NSNAP; i++, r += 4 + FK_NPA + ng) {
-        set.snaps[i].used = r[0];
-        set.snaps[i].algo = r[1];
-        set.snaps[i].oct = r[2];
-        memcpy(set.snaps[i].p, r + 4, FK_NPA);
-        memcpy(set.snaps[i].g, FK_GLOBAL_INIT, FK_NPG);
-        memcpy(set.snaps[i].g, r + 4 + FK_NPA, (uint32_t)ng);
+    for (i = 0; i < NSNAP_OLD; i++, r += 4 + FK_NPA + ng) {   /* jeder alte Snapshot bleibt auf seiner Taste */
+        snap_t *n = &set.snaps[OKEY[i]];
+        n->used = r[0];
+        n->algo = r[1];
+        n->oct = r[2];
+        memcpy(n->p, r + 4, FK_NPA);
+        memcpy(n->g, FK_GLOBAL_INIT, FK_NPG);
+        memcpy(n->g, r + 4 + FK_NPA, (uint32_t)ng);
         if (q)
-            set.snaps[i].p[P_QUEST] = 0;
+            n->p[P_QUEST] = 0;
     }
     for (a = 0; q && a < FK_NALGO; a++)
         set.p[a][P_QUEST] = 0;
-    for (l = 0; l < (ng - 4) / 4; l++) {  /* SHAPE hatte 6 Formen, jetzt 12: dieselbe Form behalten */
+    for (l = 0; sh6 && l < (ng - 4) / 4; l++) {   /* SHAPE hatte 6 Formen, jetzt 12: dieselbe Form behalten */
         int k = P_SHAPE - FK_NPA + 4 * l;
         set.g[k] = (uint8_t)(((set.g[k] * 6 >> 7) * 128 + 64) / FK_NSHAPE);
         for (i = 0; i < NSNAP; i++)
@@ -495,10 +499,11 @@ static void algo_set(int a)
 }
 
 /* ---- die Snapshots: ein ganzer Klang auf einer Taste ---- */
+static void snap_name(int s, char *t);
 static void snap_store(int s)
 {
     snap_t *n = &set.snaps[s];
-    char t[8] = "SNAP ";
+    char t[12] = "SNAP ";
     n->used = 1;
     n->algo = set.algo;
     n->oct = set.oct;
@@ -506,8 +511,7 @@ static void snap_store(int s)
     memcpy(n->g, set.g, FK_NPG);
     set.snap = (uint8_t)(s + 1);
     dirty();
-    t[5] = (char)('1' + s);
-    t[6] = 0;
+    snap_name(s, t);
     app_say(t, "STORED");
 }
 
@@ -516,10 +520,9 @@ static void snap_load(int s)
     snap_t *n = &set.snaps[s];
     uint8_t o[FK_NP];
     uint32_t f;
-    char t[8] = "SNAP ";
+    char t[12] = "SNAP ";
     int same;
-    t[5] = (char)('1' + s);
-    t[6] = 0;
+    snap_name(s, t);
     if (!n->used) {
         app_say(t, "EMPTY");
         return;
@@ -608,15 +611,14 @@ static void save_now(void)               /* leise blenden, dann schreiben (app_f
     fk_duck(1);
 }
 
-static const uint8_t SNAP_KEY[NSNAP] = {0, 2, 4, 6, 7, 9, 11, 12};   /* die ersten acht weißen Tasten */
-static int snap_of_key(uint32_t k)
+/* jede Taste ein Snapshot: Snapshot i liegt auf Taste i; benannt nach der Taste (F3 .. G5) */
+static void snap_name(int s, char *t)
 {
-    int i;
-    for (i = 0; i < NSNAP; i++)
-        if (SNAP_KEY[i] == k)
-            return i;
-    return -1;
+    static const char *const NN[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    text_cat(t, NN[(53 + s) % 12]);
+    int_text((53 + s) / 12 - 1, t);
 }
+static int snap_of_key(uint32_t k) { return k < NSNAP ? (int)k : -1; }
 static int snap_mode(void)               /* 1: SEL gehalten (laden), 2: SAVE gehalten (ablegen), 0: spielen */
 {
     uint32_t b = plat_buttons();
@@ -815,9 +817,9 @@ static void lights(void)
         uint32_t on = 0, i;
         for (i = 0; i < NSNAP; i++)
             if (set.snaps[i].used && !(set.snap == i + 1u && ((now / 200u) & 1u)))
-                on |= 1u << SNAP_KEY[i];
+                on |= 1u << i;
         for (i = 0; i < NSNAP; i++)
-            lit |= 1u << SNAP_KEY[i];
+            lit |= 1u << i;
         plat_lights(btn | ui.btn, on, dimb & ~(1u << B_PLAY), lit, 1);
         return;
     }
@@ -1325,12 +1327,18 @@ static void message(uint32_t now)
     if (sm) {
         int i;
         s_text(11.0f, MY0 + 17.0f, &FONT_XS, sm == 2 ? "STORE SNAPSHOT:" : "LOAD SNAPSHOT:", C_TXT, 0);
-        for (i = 0; i < NSNAP; i++) {
-            float x = 130.0f + (float)i * 12.0f;
-            int cur = set.snap == (uint8_t)(i + 1), used = set.snaps[i].used;
-            s_disc(x, MY0 + 23.0f, 2.6f, cur && used ? RED : used ? GOLD : rgb3(50, 50, 70), 1.0f);
-            if (cur && used)
-                s_bloom(x, MY0 + 23.0f, 6.0f, RED, 0.45f);
+        {   /* eine kleine Tastatur: jede Taste ein Snapshot (weiße unten, schwarze darüber) */
+            float wx = 124.0f;
+            for (i = 0; i < NSNAP; i++) {
+                int pc = (53 + i) % 12, blk = pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
+                float x = blk ? wx - 3.3f : wx, y = MY0 + (blk ? 18.0f : 25.0f);
+                int cur = set.snap == (uint8_t)(i + 1), used = set.snaps[i].used;
+                s_disc(x, y, 2.2f, cur && used ? RED : used ? GOLD : blk ? rgb3(30, 30, 44) : rgb3(60, 60, 80), 1.0f);
+                if (cur && used)
+                    s_bloom(x, y, 6.0f, RED, 0.45f);
+                if (!blk)
+                    wx += 6.6f;
+            }
         }
         return;
     }
@@ -1774,8 +1782,8 @@ int app_expect(const char *what, int *got)
         *got = set_dirty;
     else if (!strcmp(what, "snap"))
         *got = set.snap;
-    else if (!strncmp(what, "snapused", 8))  /* snapusedN: Platz N (1..8) belegt */
-        *got = set.snaps[(atoi(what + 8) - 1) & 7].used;
+    else if (!strncmp(what, "snapused", 8))  /* snapusedN: Platz N (1..27) belegt */
+        *got = set.snaps[(uint32_t)(atoi(what + 8) - 1) % NSNAP].used;
     else if (!strcmp(what, "eco"))
         *got = fk_eco_on();
     else if (!strncmp(what, "level_x1000_ge", 14))   /* level_x1000_geN: der Ausgang mindestens N/1000 (1) */
