@@ -32,10 +32,15 @@ enum {
     P_CREEP, P_WANDER, P_BITS, P_VOLUME,     /* EDIT */
     P_FATE, P_QUEST,                         /* REC, ALGORITHM */
     FK_NPA,                                  /* bis hier: je Algorithmus; danach für alle gleich */
-    P_AGE = FK_NPA, P_AURA, P_SPEED, P_WIDTH,      /* LFO */
+    P_AGE = FK_NPA, P_AURA, P_SPEED, P_WIDTH,      /* SPELL (GLO) */
+    P_RATE, P_SHAPE, P_POWER, P_PATH,        /* OMEN (LFO): der LFO */
     FK_NP
 };
 #define FK_NPG (FK_NP - FK_NPA)
+#define FK_NSHAPE 6
+#define FK_NPATH 8
+extern const char *const FK_SHAPE_NAME[FK_NSHAPE];
+extern const char *const FK_PATH_NAME[FK_NPATH];
 extern const uint8_t FK_GLOBAL_INIT[FK_NPG];
 
 typedef struct {
@@ -66,7 +71,9 @@ typedef struct {
 void fk_init(const fk_mem *m);
 void fk_algo(int a);
 void fk_params(const uint8_t p[FK_NP]);
-void fk_morph(const uint8_t p4[4]);      /* QUEST = MORPH: CURSE, HORDE, RUNE, ALCHEMY des nächsten Algorithmus */
+void fk_morph(const uint8_t p4[4]);
+void fk_sync(float bpm);                 /* OMEN: das Tempo des GROOVE (0: frei) */
+float fk_omen(void);                     /* OMEN: der LFO gerade (-1..1, mal POWER) */      /* QUEST = MORPH: CURSE, HORDE, RUNE, ALCHEMY des nächsten Algorithmus */
 void fk_note_on(int note, int vel);
 void fk_note_off(int note);
 void fk_hold(int on);

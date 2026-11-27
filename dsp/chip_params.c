@@ -9,10 +9,18 @@ const fk_param_info FK_PARAMS[FK_NP] = {
     {"CREEP", 0}, {"WANDER", 0}, {"BITS", 0}, {"VOLUME", 0},
     {"FATE", 0}, {"QUEST", 0},
     {"AGE", 0}, {"AURA", 0}, {"SPEED", 0}, {"WIDTH", 0},
+    {"RATE", 0}, {"SHAPE", 0}, {"POWER", 0}, {"PATH", 0},
 };
+const char *const FK_SHAPE_NAME[FK_NSHAPE] = {"SINE", "TRIANGLE", "SAW", "SQUARE", "STAIRS", "CHANCE"};
+const char *const FK_PATH_NAME[FK_NPATH] = {"BREATH", "FLAME", "HAUNT", "AURA", "TIDE", "CURSE", "DECAY", "STORM"};
+/* OMEN: RATE frei 0,016 .. 20 Hz; zum GROOVE in Notenwerten (Zyklen je Takt) */
+static float omen_hz(int v) { return 0.016f * fm_exp2f((float)v * (10.29f / 127.0f)); }
+static const float OMEN_CPB[8] = {0.25f, 0.5f, 1.0f, 2.0f, 4.0f, 8.0f, 16.0f, 32.0f};
+static const char *const OMEN_DIV[8] = {"4 BARS", "2 BARS", "1 BAR", "1/2", "1/4", "1/8", "1/16", "1/32"};
+static float omen_sync_bpm;
 
-/* AGE, AURA, SPEED, WIDTH: wie sie anfangen (AURA an: ein Drone von Anfang an) */
-const uint8_t FK_GLOBAL_INIT[FK_NPG] = {10, 64, 50, 96};
+/* AGE, AURA, SPEED, WIDTH, RATE, SHAPE, POWER, PATH: wie sie anfangen (AURA an: ein Drone von Anfang an; OMEN aus) */
+const uint8_t FK_GLOBAL_INIT[FK_NPG] = {10, 64, 50, 96, 64, 0, 0, 0};
 
 /*                                                CURSE HORDE RUNE ALCH  ECHO HAUNT DECAY DEPTH  TORCH PORTAL AWAKEN SLUMB  CREEP WANDER BITS VOL  FATE QUEST */
 const fk_algo_info FK_ALGOS[FK_NALGO] = {
@@ -120,6 +128,32 @@ const char *fk_value_text(int p, int v, char *t)
     case P_BITS: vt_int(t, (int)(16.0f - u * 15.0f + 0.5f)); vt_cat(t, " BIT"); break;
     case P_AGE: vt_hz(t, 44100.0f * fm_exp2f(-u * 4.46f)); vt_cat(t, "HZ"); break;
     case P_SPEED: vt_int(t, (int)(1.0f + u * 59.0f + 0.5f)); vt_cat(t, " HZ"); break;
+    case P_RATE:
+        if (omen_sync_bpm > 0.0f) {
+            vt_cat(t, OMEN_DIV[(v * 8) >> 7]);
+        } else {
+            float hz = omen_hz(v);
+            if (hz < 1.0f) {                 /* langsam: Sekunden je Welle */
+                vt_int(t, (int)(1.0f / hz + 0.5f));
+                vt_cat(t, " S");
+            } else {
+                vt_int(t, (int)hz);
+                vt_cat(t, ".");
+                vt_int(t, (int)((hz - (float)(int)hz) * 10.0f));
+                vt_cat(t, " HZ");
+            }
+        }
+        break;
+    case P_SHAPE: vt_cat(t, FK_SHAPE_NAME[(v * FK_NSHAPE) >> 7]); break;
+    case P_PATH: vt_cat(t, FK_PATH_NAME[(v * FK_NPATH) >> 7]); break;
+    case P_POWER:
+        if (!v) {
+            vt_cat(t, "OFF");
+            break;
+        }
+        vt_int(t, (v * 100 + 63) / 127);
+        vt_cat(t, "%");
+        break;
     case P_VOLUME: vt_int(t, (int)(-30.0f + 36.0f * u + (u < 0.83f ? -0.5f : 0.5f))); vt_cat(t, "DB"); break;
     case P_HAUNT:
         if (v < 64)

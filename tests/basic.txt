@@ -53,9 +53,12 @@ shot ritual.png
 tap EDIT
 expect page 5
 shot lore.png
-tap LFO
+tap GLO
 expect page 6
 shot spell.png
+tap LFO
+expect page 7
+shot omen.png
 tap HOME
 expect page 0
 tap HOME
@@ -115,10 +118,6 @@ press SEQ
 wait 1100
 release SEQ
 expect set0 64
-tap GLO
-wait 300
-shot vol.png
-tap GLO
 # MIDI: a note, CC 1 = RUNE, CC 70..73 = CURSE HORDE RUNE ALCHEMY, CC 75 WRATH
 midi 90 3C 64
 wait 50
