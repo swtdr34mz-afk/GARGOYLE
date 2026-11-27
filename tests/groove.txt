@@ -1,0 +1,94 @@
+# GARGOYLE: the GROOVE. HOME twice, REC switches it on; ALGORITHM picks the style; every style recorded
+wait 4000
+tapkey 7 100
+wait 1000
+tap HOME
+expect page 1
+expect grv_on 0
+shot groove_off.png
+tap REC
+expect grv_on 1
+wait 2000
+expect grv_running 1
+expect grv_hits_ge3 1
+shot groove_heart.png
+# the knobs: DENSITY coarse, TEMPO fine (BPM)
+wait 100
+turn K1 4 120
+expect grv0 60
+wait 100
+turn K4 1
+expect grv3 36
+# every style: a screen and a recording
+wav s1.wav
+wait 4000
+wavstop
+expect peak_db_min -40
+turn ALGO 1
+expect grv_style 1
+wav s2.wav
+wait 4000
+wavstop
+shot s2.png
+turn ALGO 1
+wav s3.wav
+wait 4000
+wavstop
+turn ALGO 1
+wav s4.wav
+wait 4000
+wavstop
+turn ALGO 1
+wav s5.wav
+wait 4000
+wavstop
+turn ALGO 1
+wav s6.wav
+wait 4000
+wavstop
+turn ALGO 1
+wav s7.wav
+wait 4000
+wavstop
+turn ALGO 1
+wav s8.wav
+wait 4000
+wavstop
+turn ALGO 1
+wav s9.wav
+wait 4000
+wavstop
+turn ALGO 1
+expect grv_style 9
+wav s10.wav
+wait 4000
+wavstop
+shot s10.png
+turn ALGO 1
+expect grv_style 0
+# SETUP: HOME again; FOLLOW off, TUNE in semitones
+tap HOME
+expect page 2
+turn K3 -1
+expect grv6 0
+turn K4 3 150
+expect grv7 67
+shot setup.png
+# MIDI clock: start, clocks; stop holds it
+midi FA 00 00
+wait 20
+midi F8 00 00
+midi F8 00 00
+midi F8 00 00
+expect grv_synced 1
+midi FC 00 00
+wait 100
+expect grv_running 0
+midi FA 00 00
+wait 100
+expect grv_running 1
+# REC again: off
+tap REC
+expect grv_on 0
+tap HOME
+expect page 0

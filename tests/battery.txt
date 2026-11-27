@@ -1,0 +1,14 @@
+# GARGOYLE: the battery as three hearts (full, two thirds, empty blinking, USB)
+wait 4000
+expect batt5
+wait 100
+shot batt_full.png
+expect batt4
+wait 100
+shot batt_two.png
+expect batt2
+wait 600
+shot batt_empty.png
+expect batt6
+wait 100
+shot batt_usb.png
