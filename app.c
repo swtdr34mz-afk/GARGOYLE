@@ -33,10 +33,11 @@
 #define SR 44100.0f
 
 /* ------------------------------------------------------- der Klang-Speicher --- */
-static int8_t mem_ec[2][FK_EC_N] __attribute__((section(".pool")));
+static int16_t mem_ec[2][FK_EC_N] __attribute__((section(".pool")));
+static float mem_df[FK_DF_N] __attribute__((section(".pool")));
 
 /* ------------------------------------------------------------- Speicher --- */
-#define SET_MAGIC 0x32475247u            /* "GRG2": der 8-Bit-Kern */
+#define SET_MAGIC 0x33475247u            /* "GRG3": der 8-Bit-Kern, für Drones abgestimmt */
 #define NSNAP 8
 typedef struct {
     uint8_t used, algo, oct, rsv;
@@ -1432,6 +1433,7 @@ void app_init(void)
     int i;
     m.ec[0] = mem_ec[0];
     m.ec[1] = mem_ec[1];
+    m.df = mem_df;
     settings_load();
     set.hold = 0;                        /* nach dem Start still: HOLD aus, bis man es will */
     fk_init(&m);

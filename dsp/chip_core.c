@@ -94,6 +94,9 @@ static struct {
     float env, atk, rel;
     /* die Stimmen */
     float ph[NV], ph2[NV], duty_ph, drift[NV], dv[NV];
+    float wv[8], wt_[8], wcnt[8];             /* WANDER: langsame Zufallswege (Stimmung je Stimme, RUNE, TORCH, Pan, Atem) */
+    uint32_t dw[8];                           /* die Diffusoren: Schreibstellen */
+    float wow;
     lfsr_t nz[NV];
     poky_t pk[NV];
     uint8_t wt[4][32];                        /* die Tabellen (FATE würfelt sie) */
@@ -150,8 +153,9 @@ void fk_init(const fk_mem *m)
 {
     fk_zero(&E, sizeof E);
     E.m = *m;
-    fk_zero(E.m.ec[0], FK_EC_N);
-    fk_zero(E.m.ec[1], FK_EC_N);
+    fk_zero(E.m.ec[0], FK_EC_N * 2u);
+    fk_zero(E.m.ec[1], FK_EC_N * 2u);
+    fk_zero(E.m.df, FK_DF_N * 4u);
     E.algo_next = -1;
     E.xf = 1.0f;
     E.xf_dir = 1.0f;
@@ -224,8 +228,9 @@ void fk_panic(void)
 {
     fk_all_off();
     E.env = 0.0f;
-    fk_zero(E.m.ec[0], FK_EC_N);
-    fk_zero(E.m.ec[1], FK_EC_N);
+    fk_zero(E.m.ec[0], FK_EC_N * 2u);
+    fk_zero(E.m.ec[1], FK_EC_N * 2u);
+    fk_zero(E.m.df, FK_DF_N * 4u);
 }
 void fk_bend(float semis) { E.bend = semis; }
 void fk_freeze(int on) { E.freeze = on; }
@@ -258,7 +263,7 @@ static float horde_ratio(int i, float h)
     }
     return fm_exp2f(E.dv[i] * h * h * 0.06f + (float)(i & 1) * h * 0.004f);
 }
-static float drift_of(int i) { return fm_exp2f(E.drift[i] * (1.0f / 1200.0f)); }
+static float drift_of(int i) { return fm_exp2f(E.drift[i & 3] * (1.0f / 1200.0f)); }
 static inline void adv(float *ph, float hz) { *ph = wrap1(*ph + hz * (1.0f / FK_SR)); }
 
 /* 1 TORCHLIGHT: zwei Pulswellen (NES), die Pulsbreite wandert; CURSE links Ring, rechts Sync */
@@ -756,9 +761,14 @@ void fk_render(float *l, float *r, int n)
     if (n > FK_BLOCK_MAX)
         n = FK_BLOCK_MAX;
     /* die Regler glätten */
-    for (i = 0; i < FK_NP; i++) {
-        float t = (float)E.raw[i] * (1.0f / 127.0f);
-        E.sm[i] += (t - E.sm[i]) * 0.15f;
+    {   /* CREEP: jeder Regler zieht langsam nach (bis ~8 s), CREEP selbst und die Rastenden sofort */
+        float cr = (float)E.raw[P_CREEP] * (1.0f / 127.0f), tau = 0.012f + cr * cr * 8.0f;
+        float co = clampf((float)n / (FK_SR * tau), 0.0f, 1.0f);
+        for (i = 0; i < FK_NP; i++) {
+            float t = (float)E.raw[i] * (1.0f / 127.0f);
+            int fast = i == P_CREEP || i == P_PORTAL || i == P_QUEST || i == P_FATE || i == P_VOLUME;
+            E.sm[i] += (t - E.sm[i]) * (fast ? 0.15f : co);
+        }
     }
     if (E.raw[P_FATE] != E.last_fate) {
         E.last_fate = E.raw[P_FATE];
@@ -787,7 +797,7 @@ void fk_render(float *l, float *r, int n)
     k.sp = 1.0f + E.sm[P_SPEED] * 59.0f;      /* 1 .. 60 Hz: die Bildrate der alten Spiele ist 50 / 60 */
     /* die Tonhöhe: Gleiten, Vibrato (in der Bildrate, stufig wie im Tracker), PORTAL */
     sm = E.sm[P_CREEP];
-    E.glide = sm < 0.01f ? 1.0f : 1.0f - fm_exp2f(-(float)n / (FK_SR * 0.002f * fm_exp2f(sm * 10.5f)));
+    E.glide = sm < 0.01f ? 1.0f : 1.0f - fm_exp2f(-(float)n / (FK_SR * 0.002f * fm_exp2f(sm * 12.5f)));
     E.pitch += (E.target - E.pitch) * E.glide;
     E.vib_ph = wrap1(E.vib_ph + (2.0f + E.sm[P_SPEED] * 8.0f) * (float)n / FK_SR);
     vib = E.sm[P_VIBRATO] * E.sm[P_VIBRATO] * 1.2f * (float)((int)(fk_sin(E.vib_ph) * 4.0f)) * 0.25f;
@@ -796,11 +806,28 @@ void fk_render(float *l, float *r, int n)
         f0 = mtof(E.pitch + E.bend + vib + (float)portal);
     }
     k.f = clampf(f0, 8.0f, 6000.0f);
-    for (i = 0; i < NV; i++) {               /* WANDER: jede Stimme driftet für sich (Cent) */
-        E.drift[i] += (rng_f(&E.rng) - 0.5f) * 3.0f * E.sm[P_WANDER] - E.drift[i] * 0.002f;
-        E.drift[i] = clampf(E.drift[i], -40.0f * E.sm[P_WANDER], 40.0f * E.sm[P_WANDER]);
+    {   /* WANDER: acht langsame Zufallswege, jeder sucht sich alle paar Sekunden ein neues Ziel und gleitet hin */
+        float w = E.sm[P_WANDER];
+        for (i = 0; i < 8; i++) {
+            E.wcnt[i] -= (float)n;
+            if (E.wcnt[i] <= 0.0f) {
+                E.wt_[i] = rng_f(&E.rng) * 2.0f - 1.0f;
+                E.wcnt[i] = FK_SR * (1.5f + 5.0f * rng_f(&E.rng));
+            }
+            E.wv[i] += (E.wt_[i] - E.wv[i]) * (float)n / (FK_SR * 2.5f);
+        }
+        for (i = 0; i < NV; i++)          /* die Stimmen: bis ±70 Cent auseinander */
+            E.drift[i] = E.wv[i] * 70.0f * w * w;
+        k.r = clampf(k.r + E.wv[4] * 0.4f * w, 0.0f, 0.999f);   /* die Klangfarbe wandert */
     }
     ALGO_FN[E.algo](&k, gl, gr, n);
+    {   /* WANDER: das Panorama wandert, der Klang atmet */
+        float w = E.sm[P_WANDER], pan = E.wv[6] * 0.6f * w, br = 1.0f - 0.35f * w * (0.5f + 0.5f * E.wv[7]);
+        for (i = 0; i < n; i++) {
+            gl[i] *= (1.0f - pan) * br;
+            gr[i] *= (1.0f + pan) * br;
+        }
+    }
     {   /* gleich laut: je Algorithmus ein Ausgleich (gemessen) */
         static const float GAIN[FK_NALGO] = {1.0f, 1.5f, 1.0f, 1.15f, 1.2f, 1.4f, 2.6f, 1.5f,
                                              1.4f, 1.0f, 1.3f, 1.65f, 1.0f, 0.95f, 0.95f, 1.0f};
@@ -817,6 +844,11 @@ void fk_render(float *l, float *r, int n)
     torch = B(P_TORCH);
     fc_lp = torch < 0.0f ? 18000.0f * fm_exp2f(torch * 9.0f) : 18000.0f;
     fc_hp = torch > 0.0f ? 20.0f * fm_exp2f(torch * 8.5f) : 20.0f;
+    {   /* WANDER: auch das Filter wandert (bis 1,5 Oktaven) */
+        float wf = fm_exp2f(E.wv[5] * 1.5f * E.sm[P_WANDER]);
+        fc_lp = clampf(fc_lp * wf, 40.0f, 18000.0f);
+        fc_hp = clampf(fc_hp * wf, 10.0f, 15000.0f);
+    }
     {
         float al = clampf(TAU * fc_lp / FK_SR, 0.0f, 1.0f), ah = clampf(TAU * fc_hp / FK_SR, 0.0f, 1.0f);
         /* BITS: 16 .. 1 Bit; AGE: die Abtastrate 44,1 kHz .. 2 kHz (Halten) */
@@ -875,61 +907,86 @@ void fk_render(float *l, float *r, int n)
             gl[i] *= X_duck[i];
             gr[i] *= X_duck[i];
         }
-    /* das Echo: 8 Bit im Speicher; HAUNT links Ping-Pong, rechts gerade; DECAY: dumpfer und körniger je Runde */
+    /* das Echo: HAUNT links Ping-Pong, rechts gerade (ganz außen endlos); DECAY macht aus den Echos Nebel: erst dumpfer,
+     * dann verwaschen durch vier Allpässe je Seite in der Schleife (eine Fläche statt Wiederholungen), ganz oben körnig
+     * wie 8 Bit. Die Zeit schwankt ein wenig wie ein altes Band (Chorus). */
     ecm = E.sm[P_ECHO];
     haunt = B(P_HAUNT);
-    feed = absf(haunt) * 0.97f;
+    feed = absf(haunt) > 0.96f ? 1.0f : absf(haunt) * 0.985f;
     cross = haunt < 0.0f ? 1.0f : 0.0f;
     dec = E.sm[P_DECAY];
     dly = 5.0f * fm_exp2f(E.sm[P_DEPTH] * 7.2f) * 0.001f * FK_SR;
-    dly = clampf(dly, 8.0f, (float)FK_EC_N - 4.0f);
+    dly = clampf(dly, 8.0f, (float)FK_EC_N - 64.0f);
     if (E.ed <= 0.0f)
         E.ed = dly;
     {
-        float lpc = 1.0f - dec * 0.85f, crush = dec > 0.5f ? (float)(int)(2.0f + (1.0f - dec) * 60.0f) : 0.0f;
-        float send = X_l ? X_send : 0.0f;
+        static const uint16_t DL[8] = {347, 557, 839, 1153, 409, 613, 887, 1201};   /* (Summe < FK_DF_N) */
+        float lpc = 1.0f - clampf(dec * 1.6f, 0.0f, 0.85f), gdf = clampf((dec - 0.25f) * 1.1f, 0.0f, 0.72f);
+        float crush = dec > 0.88f ? (float)(int)(2.0f + (1.0f - dec) * 120.0f) : 0.0f;
+        float send = X_l ? X_send : 0.0f, wow_d = 2.0f + 10.0f * dec;
+        uint32_t off[8], o = 0, j;
+        for (j = 0; j < 8; j++) {
+            off[j] = o;
+            o += DL[j];
+        }
         if (E.freeze)
             feed = 1.0f;
         for (i = 0; i < n; i++) {
-            float rl, rr, dl, dr, inl, inr, fr;
+            float rl, rr, dl, dr, inl, inr, fr, wl, wr2;
             int32_t p0, p1;
             uint32_t ri;
-            E.ed += (dly - E.ed) * 0.0005f;   /* die Zeit gleitet (ohne Knacken) */
-            fr = (float)E.ew - E.ed;
+            E.ed += (dly - E.ed) * 0.0005f;
+            E.wow = wrap1(E.wow + 0.37f / FK_SR);
+            fr = (float)E.ew - E.ed - wow_d * (1.0f + fk_sin(E.wow));
             if (fr < 0.0f)
                 fr += (float)FK_EC_N;
             ri = (uint32_t)fr;
             p0 = E.m.ec[0][ri & (FK_EC_N - 1u)];
             p1 = E.m.ec[0][(ri + 1u) & (FK_EC_N - 1u)];
-            rl = ((float)p0 + (float)(p1 - p0) * (fr - (float)ri)) * (1.0f / 120.0f);
+            rl = ((float)p0 + (float)(p1 - p0) * (fr - (float)ri)) * (1.0f / 16000.0f);
             p0 = E.m.ec[1][ri & (FK_EC_N - 1u)];
             p1 = E.m.ec[1][(ri + 1u) & (FK_EC_N - 1u)];
-            rr = ((float)p0 + (float)(p1 - p0) * (fr - (float)ri)) * (1.0f / 120.0f);
-            E.elp[0] += (rl - E.elp[0]) * lpc;
-            E.elp[1] += (rr - E.elp[1]) * lpc;
+            rr = ((float)p0 + (float)(p1 - p0) * (fr - (float)ri)) * (1.0f / 16000.0f);
+            E.elp[0] += (rl - E.elp[0]) * (E.freeze ? 1.0f : lpc);
+            E.elp[1] += (rr - E.elp[1]) * (E.freeze ? 1.0f : lpc);
             dl = E.elp[0];
             dr = E.elp[1];
+            if (gdf > 0.0f) {                 /* der Nebel: Allpässe in der Schleife */
+                for (j = 0; j < 4; j++) {
+                    float *bl = E.m.df + off[j], *br = E.m.df + off[j + 4];
+                    uint32_t wl_ = E.dw[j], wr_ = E.dw[j + 4];
+                    float vl = bl[wl_], vr = br[wr_], ul = dl + vl * gdf, ur = dr + vr * gdf;
+                    bl[wl_] = ul;
+                    br[wr_] = ur;
+                    dl = vl - ul * gdf;
+                    dr = vr - ur * gdf;
+                    E.dw[j] = wl_ + 1u >= DL[j] ? 0u : wl_ + 1u;
+                    E.dw[j + 4] = wr_ + 1u >= DL[j + 4] ? 0u : wr_ + 1u;
+                }
+            }
             if (crush > 0.0f && !E.freeze) {
                 dl = (float)(int)(dl * crush) / crush;
                 dr = (float)(int)(dr * crush) / crush;
             }
             inl = E.freeze ? 0.0f : gl[i] + (X_l ? X_l[i] * send : 0.0f);
             inr = E.freeze ? 0.0f : gr[i] + (X_r ? X_r[i] * send : 0.0f);
-            {
-                float wl = inl + feed * (cross ? dr : dl), wr2 = inr + feed * (cross ? dl : dr);
-                if (cross) {                  /* Ping-Pong: hinein nur links */
-                    wl = (inl + inr) * 0.5f + feed * dr;
-                    wr2 = feed * dl;
-                }
-                E.m.ec[0][E.ew] = (int8_t)clampf(wl * 120.0f, -127.0f, 127.0f);
-                E.m.ec[1][E.ew] = (int8_t)clampf(wr2 * 120.0f, -127.0f, 127.0f);
+            if (cross) {
+                wl = (inl + inr) * 0.5f + feed * dr;
+                wr2 = feed * dl;
+            } else {
+                wl = inl + feed * dl;
+                wr2 = inr + feed * dr;
             }
+            wl = wl > 1.0f ? 1.0f + softc(wl - 1.0f) * 0.2f : wl < -1.0f ? -1.0f + softc(wl + 1.0f) * 0.2f : wl;
+            wr2 = wr2 > 1.0f ? 1.0f + softc(wr2 - 1.0f) * 0.2f : wr2 < -1.0f ? -1.0f + softc(wr2 + 1.0f) * 0.2f : wr2;
+            E.m.ec[0][E.ew] = (int16_t)clampf(wl * 16000.0f, -32000.0f, 32000.0f);
+            E.m.ec[1][E.ew] = (int16_t)clampf(wr2 * 16000.0f, -32000.0f, 32000.0f);
             E.ew = (E.ew + 1u) & (FK_EC_N - 1u);
-            gl[i] = gl[i] * (1.0f - 0.5f * ecm) + dl * ecm;
-            gr[i] = gr[i] * (1.0f - 0.5f * ecm) + dr * ecm;
-            if (X_send > 0.0f && X_l && ecm < 0.3f) {   /* der GROOVE in der Ferne: sein Echo klingt auch ohne ECHO */
-                gl[i] += dl * X_send * 0.5f;
-                gr[i] += dr * X_send * 0.5f;
+            gl[i] = gl[i] * (1.0f - 0.6f * ecm) + dl * ecm * 1.1f;
+            gr[i] = gr[i] * (1.0f - 0.6f * ecm) + dr * ecm * 1.1f;
+            if (send > 0.0f && ecm < 0.3f) {
+                gl[i] += dl * send * 0.5f;
+                gr[i] += dr * send * 0.5f;
             }
         }
         E.elp[0] = fm_flush(E.elp[0]);

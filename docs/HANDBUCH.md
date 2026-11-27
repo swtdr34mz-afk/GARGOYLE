@@ -3,7 +3,8 @@
 GARGOYLE ist ein 8-Bit-Drone-Synth für das M-VAVE FM-1. Die Klänge kommen aus den Soundchips der alten Heimcomputer,
 Konsolen und DOS-Spiele: Pulswellen und Rauschen des NES, die 4-Bit-Wellen des Game Boy, Arpeggio-Akkorde und
 Ringmodulator des C64, die schmutzigen Zähler des Atari POKEY, die FM der AdLib-Karte, der 1-Bit-PC-Lautsprecher.
-Daraus werden Drones. Kein Hall – stattdessen ein Echo, das in 8 Bit speichert.
+Daraus werden Drones: Ab Werk blendet jeder Klang langsam ein, das Echo macht aus den Chip-Tönen eine Fläche, und
+WANDER lässt alles von selbst langsam wandern. Kein Hall – stattdessen ein Echo, das mit DECAY zum Nebel wird.
 
 ## Start
 
@@ -38,11 +39,15 @@ ein Knopf überspringt das. Nach dem Start ist es still (HOLD aus): PLAY schalte
 - **HORDE** (Mitte neutral): die Stimmen – links kommen Oktaven darunter dazu, rechts werden sie verstimmt.
 - **RUNE:** die Wellenform, die Pulsbreite oder die Tabelle.
 - **ALCHEMY:** je Algorithmus etwas anderes – beim Drehen steht unten, was.
-- **ECHO** (trocken/nass), **HAUNT** (Rückkopplung; links Ping-Pong), **DECAY** (die Wiederholungen werden dumpfer und
-  körniger), **DEPTH** (die Zeit, 5 ms bis 0,7 s).
+- **ECHO** (trocken/nass), **HAUNT** (Rückkopplung; links Ping-Pong, ganz außen endlos), **DECAY** (aus Echos wird
+  Nebel: erst dumpfer, dann verwaschen zu einer Fläche, ganz oben körnig wie 8 Bit), **DEPTH** (die Zeit, 5 ms bis
+  0,7 s; sie schwankt leicht wie ein altes Band).
 - **TORCH** (Mitte offen; links Tiefpass, rechts Hochpass), **PORTAL** (Tonhöhe, eine Raste = ein Halbton, ±24),
   **AWAKEN** (Anstieg), **SLUMBER** (Ausklingen).
-- **CREEP** (Gleiten), **WANDER** (die Stimmen driften), **BITS** (16 bis 1 Bit), **VOLUME**.
+- **CREEP**: alles gleitet – die Tonhöhe bis 12 s, und jeder Regler zieht langsam nach (bis 8 s), so werden
+  Bewegungen am Regler zu langsamen Übergängen. **WANDER**: der Klang wandert von selbst – Stimmung der Stimmen
+  (bis ±70 Cent), Klangfarbe, Filter (bis 1,5 Oktaven), Panorama und Lautstärke atmen, jeder Weg in seinem eigenen
+  langsamen Tempo. **BITS** (16 bis 1 Bit), **VOLUME**.
 - **AGE** (die Abtastrate, bis hinunter auf 2 kHz), **VIBRATO** (in Stufen wie im Tracker), **SPEED** (Vibrato,
   Arpeggios und Muster, 1–60 Hz – die Bildrate der alten Spiele ist 50/60), **WIDTH**. Die SPELL-Seite gilt für alle
   Algorithmen gleich.
