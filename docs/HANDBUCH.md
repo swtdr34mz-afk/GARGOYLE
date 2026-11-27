@@ -94,7 +94,9 @@ Bipolare Regler rasten in der Mitte zwei Rasten lang ein.
 **ALGORITHM** dreht QUEST, den **MORPH**: stufenlos vom Algorithmus in den nächsten (TORCHLIGHT → CRYPT CHOIR …,
 SPELLBOOK → TORCHLIGHT). Der nächste klingt dabei mit seinen eigenen Reglern, dazwischen klingen beide; ganz links
 ist der MORPH aus. **REC** = FATE: würfelt Tabellen, Verstimmungen, Muster und die Varianten (Welle, Akkord,
-Tonleiter bei CRYPT CHOIR, GOBLIN CHORDS, TREASURE, SPELLBOOK) neu (1 s gehalten: auch RUNE und ALCHEMY). **SEQ** 1 s: zurück auf den Werksklang.
+Tonleiter bei CRYPT CHOIR, GOBLIN CHORDS, TREASURE, SPELLBOOK) neu (1 s gehalten: auch RUNE und ALCHEMY). **SEQ** 1 s gehalten: der Klang zurück auf den Werksklang;
+weiter gehalten bis 3 s: **alles auf INIT** – alle 16 Algorithmen, SPELL, die vier OMEN, WRATH, die Regler des GROOVE
+und FREEZE. Die Snapshots bleiben.
 
 ## WRATH (SELECT)
 
