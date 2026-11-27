@@ -1,14 +1,11 @@
 # Credits
 
-GARGOYLE by swtdr34mz. The sound core is the one of FIKH-S (also by swtdr34mz: its twenty-two algorithms, the
-processors, the ambient reverb), used here under four macros. The GROOVE (dsp/garg_groove.c), the screens, the
-rooms of the dungeon (pictures by swtdr34mz, tools/art/scenes.png, cut and reduced to a palette by
-tools/gen_art.py into art.h) and everything else are written for this project; all
-sounds are synthesized in the firmware: no samples. The look is inspired by the dungeon games of the early 90s; no
-artwork, logo or name of any game is used.
+GARGOYLE by swtdr34mz. The sound core (dsp/chip_core.c), the GROOVE (dsp/garg_groove.c), the screens and everything
+else are written for this project; all sounds are synthesized in the firmware, after the principles of the old sound
+chips (no code or sound of any chip or game). The pictures of the rooms were made by swtdr34mz with ChatGPT
+(tools/art/scenes.png, cut and reduced to a palette by tools/gen_art.py into art.h); the title lettering and the torch
+flames are drawn from code. No artwork, logo or name of any game is used.
 
-- The filter is a state-variable filter after Vadim Zavalishin's published topology-preserving form.
-- The frequency shifter's 90° allpass pair uses the coefficients Olli Niemitalo published for a Hilbert transformer.
 
 ## Built on
 

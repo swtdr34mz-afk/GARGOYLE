@@ -1,5 +1,5 @@
 {
-  "what": "A drone synth made for playing live: the sound of FIKH-S (22 algorithms, now 22 rooms of a dungeon) under four macros that do the same in every room: TONE, MOVE, GRIT, SPACE, each with a sweetspot in the middle. A GROOVE of dungeon noises instead of drums (heartbeat, footsteps, drips, chains, wings, ritual, bell, bones, rumble, torch), tuned to the drone, with a soft pump that makes the drone breathe. HOLD, FREEZE, DICE, 8 snapshots, MIDI clock.",
+  "what": "An 8-bit drone synth in a dungeon: 16 algorithms from the old sound chips (NES, Game Boy, C64, Atari POKEY, AdLib, PC speaker), one knob per parameter (CURSE, HORDE, RUNE, ALCHEMY, an 8-bit echo, TORCH, BITS, AGE), WRATH as a live macro, a GROOVE of chiptune dungeon noises, a monster on every page.",
   "author": "swtdr34mz",
   "kinds": "synth",
   "play": "https://swtdr34mz-afk.github.io/GARGOYLE/emu/",

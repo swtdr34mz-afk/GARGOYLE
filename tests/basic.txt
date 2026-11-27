@@ -1,16 +1,11 @@
 # GARGOYLE in the host simulator:
 #   X0X_FONTSET=terminus python3 fm1-base/tools/build.py . --host, then build/host/gargoyle_host tests/basic.txt build/host
-# the intro: black, the name, the eyes, the flash with the silhouette
 splashshot splash.png
 wait 700
 shot intro1.png
-wait 900
-shot intro2.png
-wait 300
-shot intro3.png
-wait 600
-shot intro4.png
 wait 1400
+shot intro2.png
+wait 1500
 expect page 0
 expect algo 0
 expect hold 1
@@ -26,44 +21,55 @@ expect note 60
 shot main.png
 wavstop
 expect peak_db_min -40
-# TONE (K1) down: the sweetspot (64) holds for two detents, then 2.5 a detent; the filter closes
-turn K1 -6 120
-expect mac0 54
-expect p8 43
-shot tone.png
-# back up: it stops at the sweetspot, two detents later it goes on
-turn K1 4 120
-expect mac0 64
-wait 100
-turn K1 1
-expect mac0 64
-wait 100
-turn K1 1
-expect mac0 64
-wait 100
-turn K1 1
-expect mac0 66
-wait 100
-turn K1 -1
-expect mac0 64
-# SPACE (K4) all the way: endless
-turn K4 30 60
-expect mac3 127
-expect p19 127
-turn K4 -30 60
-turn K4 -3 120
-# the rooms: PRESET moves through them (a step: the view goes dark and back)
+# CURSE (K1, bipolar): the centre holds for two detents, the third moves on
+turn K1 3 120
+expect set0 65
+turn K1 -2 120
+expect set0 64
+turn K1 -1 120
+expect set0 64
+turn K1 -1 120
+expect set0 63
+# RUNE (K3): fine, 1 a detent when slow
+turn K3 5 120
+expect set2 45
+shot curse.png
+# the pages: FX ECHO, ENV RITUAL, EDIT LORE, LFO SPELL, HOME SUMMON / GROOVE / SETUP
+tap FX
+expect page 3
+shot echo.png
+tap ENV
+expect page 4
+# PORTAL: a detent, a semitone
+turn K2 1 120
+expect set9 67
+turn K2 -1 120
+expect set9 64
+shot ritual.png
+tap EDIT
+expect page 5
+shot lore.png
+tap LFO
+expect page 6
+shot spell.png
+tap HOME
+expect page 0
+tap HOME
+expect page 1
+tap HOME
+expect page 2
+tap HOME
+expect page 0
+# the algorithms: PRESET
 turn PRESET 3
 expect algo 3
-wait 100
-shot step.png
-wait 2000
-shot room4.png
+wait 600
+shot algo4.png
 turn PRESET -4
-expect algo 21
+expect algo 15
 turn PRESET 1
 expect algo 0
-# WRATH on SELECT: 4 a detent, over everything
+# WRATH on SELECT: 4 a detent, over everything; past half the dragon
 turn SELECT 5 120
 expect wrath 20
 wait 100
@@ -73,28 +79,11 @@ wait 300
 shot wrath.png
 turn SELECT -40 60
 expect wrath 0
-# the pages
-tap HOME
-expect page 1
-tap HOME
-expect page 2
-tap HOME
-expect page 0
-tap EDIT
-expect page 3
-shot deep.png
-tap FX
-expect page 4
-turn K1 1
-expect fx0 37
-shot fx.png
-tap HOME
-expect page 0
-# SCAN on ALGORITHM, coarse
+# QUEST on ALGORITHM, coarse
 turn ALGO 2 120
 wait 100
-expect scan 45
-# DICE
+expect scan 5
+# FATE (REC)
 tap REC
 wait 100
 expect dirty 1
@@ -105,46 +94,42 @@ wait 500
 shot freeze.png
 tap ARP
 expect freeze 0
-# HOLD off: the key ends the note
 tap PLAY
 expect hold 0
 tap PLAY
 expect hold 1
-# octave
 tap OCT+
 expect oct 3
 tap OCT-
 expect oct 2
-# SEQ held 1 s: the room back to its factory sound
-turn K2 5 120
+# SEQ held 1 s: the algorithm back to its factory sound
+turn K1 5 120
 press SEQ
 wait 1100
 release SEQ
-expect mac1 64
-# VOL
+expect set0 64
 tap GLO
 wait 300
 shot vol.png
 tap GLO
-# MIDI: a note, CC 1 = COLOR, CC 70..73 = the macros
+# MIDI: a note, CC 1 = RUNE, CC 70..73 = CURSE HORDE RUNE ALCHEMY, CC 75 WRATH
 midi 90 3C 64
 wait 50
 expect note 60
 midi B0 01 40
 wait 50
-expect deep0 64
+expect set2 64
 midi B0 47 10
 wait 50
-expect mac1 16
+expect set1 16
 midi B0 4B 40
 wait 50
 expect wrath 64
 midi B0 4B 00
 midi 80 3C 00
-# saved and back after a reboot
 tap SAVE
 wait 500
 expect dirty 0
 reboot
 wait 4500
-expect mac1 16
+expect set1 16
