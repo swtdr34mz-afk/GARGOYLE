@@ -114,11 +114,11 @@ static struct {
     float wow;
     uint8_t wt[4][32];                        /* die Tabellen (FATE würfelt sie) */
     uint8_t mraw[4];                          /* MORPH: CURSE, HORDE, RUNE, ALCHEMY des nächsten Algorithmus */
-    float om_ph, om_v, om_sh, om_out;         /* OMEN: Phase, Wert, CHANCE gehalten, Ausgang (mal POWER) */
+    float om_ph[FK_NOMEN], om_v[FK_NOMEN], om_sh[FK_NOMEN], om_out[FK_NOMEN];   /* OMEN: Phase, Wert, CHANCE, Ausgang */
     float om_vol0;                            /* die Lautstärke am Ende des letzten Blocks (gleitend) */
     float om_f0, olp[2][2];                   /* der Tiefpass von OMEN */
     float qpk;                                /* BITS: der Spitzenpegel */
-    float om_pitch, om_torch, om_rune, om_curse, om_alch, om_vol, om_aura, om_lofi;
+    float om_pitch, om_torch, om_rune, om_curse, om_alch, om_vol, om_aura, om_lofi, om_morph;
     int om_step, om_bar;
     float msm[4];
     int last_fate, last_quest;
@@ -213,7 +213,7 @@ void fk_morph(const uint8_t p4[4])
         E.mraw[i] = p4[i];
 }
 void fk_sync(float bpm) { omen_sync_bpm = bpm; }
-float fk_omen(void) { return E.om_out; }
+float fk_omen(int l) { return E.om_out[l & 3]; }
 void fk_params(const uint8_t p[FK_NP])
 {
     int i;
@@ -837,66 +837,92 @@ void fk_render(float *l, float *r, int n)
     /* die Varianten (Welle, Akkord, Tonleiter) würfelt FATE; QUEST ist der MORPH */
     k.q = ((float)(E.raw[P_FATE] & 7u) + 0.5f) * 0.125f;
     k.sp = 1.0f + E.sm[P_SPEED] * 59.0f;      /* 1 .. 60 Hz: die Bildrate der alten Spiele ist 50 / 60 */
-    /* OMEN: ein LFO, der mehrere Ziele zugleich bewegt (PATH); frei oder im Takt des GROOVE (an jedem Takt ausgerichtet) */
+    /* OMEN I..IV: vier LFOs, jeder bewegt mehrere Ziele zugleich (PATH); frei oder im Takt des GROOVE (an jedem Takt
+     * ausgerichtet). Landen zwei auf demselben Ziel, zählen sie zusammen. */
     {
-        static const float PW[FK_NPATH][8] = {
+        static const float PW[FK_NPATH][9] = {
             /* nur der Klang, nicht das Stereofeld:
-             * Tonhöhe (Cent), Filter schließen (Oktaven), RUNE, CURSE, Lautstärke, ALCHEMY, AURA, Lo-Fi */
-            {0, 5.0f, 0.15f, 0, 0.45f, 0, 0, 0},      /* BREATH: das Filter atmet zu und auf, leiser im Ausatmen */
-            {0, 7.5f, 0.3f, 0, 0, 0, 0, 0},           /* FLAME: ein tiefes Filter-Auf-und-Zu (Wah) */
-            {60, 3.0f, 0.25f, 0, 0, 0, 0, 0},         /* HAUNT: die Tonhöhe schwankt (Vibrato bis ±60 Cent), dunkler */
-            {0, 3.5f, 0.2f, 0, 0, 0, 0.8f, 0},        /* AURA: der Resonator schwillt an, das Licht wird dunkler */
-            {0, 3.0f, 0.8f, 0, 0, 0.7f, 0, 0},        /* RUNE: Welle, Pulsbreite, Tabelle und ALCHEMY wandern (PWM) */
-            {0, 0, 0.3f, 0.8f, 0, 0, 0, 0},           /* CURSE: Ring / Sync / FM pumpen (springt wie ein Arpeggio) */
-            {0, 3.0f, 0, 0, 0, 0, 0, 1.0f},           /* DECAY: Bits und Abtastrate zerfallen im Takt */
-            {20, 5.0f, 0.4f, 0.5f, 0.2f, 0.3f, 0.4f, 0.4f}};   /* STORM: alles */
-        int rv = E.raw[P_RATE], sh = (E.raw[P_SHAPE] * FK_NSHAPE) >> 7, pa = (E.raw[P_PATH] * FK_NPATH) >> 7;
-        float pw = E.sm[P_POWER], ph0 = E.om_ph, x, d;
-        const float *w = PW[pa];
+             * Tonhöhe (Cent), Filter schließen (Oktaven), RUNE, CURSE, Lautstärke, ALCHEMY, AURA, Lo-Fi, MORPH */
+            {0, 5.0f, 0.15f, 0, 0.45f, 0, 0, 0, 0},      /* BREATH: das Filter atmet zu und auf, leiser im Ausatmen */
+            {0, 7.5f, 0.3f, 0, 0, 0, 0, 0, 0},           /* FLAME: ein tiefes Filter-Auf-und-Zu (Wah) */
+            {60, 3.0f, 0.25f, 0, 0, 0, 0, 0, 0},         /* HAUNT: die Tonhöhe schwankt (Vibrato bis ±60 Cent), dunkler */
+            {0, 3.5f, 0.2f, 0, 0, 0, 0.8f, 0, 0},        /* AURA: der Resonator schwillt an, das Licht wird dunkler */
+            {0, 3.0f, 0.8f, 0, 0, 0.7f, 0, 0, 0},        /* RUNE: Welle, Pulsbreite, Tabelle und ALCHEMY wandern (PWM) */
+            {0, 0, 0.3f, 0.8f, 0, 0, 0, 0, 0},           /* CURSE: Ring / Sync / FM pumpen (springt wie ein Arpeggio) */
+            {0, 3.0f, 0, 0, 0, 0, 0, 1.0f, 0},           /* DECAY: Bits und Abtastrate zerfallen im Takt */
+            {20, 5.0f, 0.4f, 0.5f, 0.2f, 0.3f, 0.4f, 0.4f, 0},   /* STORM: alles */
+            {0, 0, 0, 0, 0, 0, 0, 0, 1.0f}};             /* MORPH: hin und her zum nächsten Algorithmus */
+        float t[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0}, vol = 1.0f;
+        int l, j, newbar = 0;
         if (omen_sync_bpm > 0.0f) {
-            float cpb = OMEN_CPB[(rv * 8) >> 7];
             int st = gr_step();
-            E.om_ph = wrap1(E.om_ph + cpb * omen_sync_bpm * (1.0f / 240.0f) * (float)n / FK_SR);
-            if (st == 0 && E.om_step != 0) {  /* ein neuer Takt: die Phase genau dorthin, wo sie hingehört */
+            if (st == 0 && E.om_step != 0) {
                 E.om_bar++;
-                E.om_ph = wrap1((float)E.om_bar * cpb);
+                newbar = 1;
             }
             E.om_step = st;
-        } else {
-            E.om_ph = wrap1(E.om_ph + omen_hz(rv) * (float)n / FK_SR);
         }
-        x = E.om_ph;
-        switch (sh) {
-        case 0: x = -fk_sin(x); break;                              /* SINE */
-        case 1: x = x < 0.5f ? 4.0f * x - 1.0f : 3.0f - 4.0f * x; break;   /* TRIANGLE */
-        case 2: x = 1.0f - 2.0f * x; break;                         /* SAW (fällt) */
-        case 3: x = x < 0.5f ? 1.0f : -1.0f; break;                 /* SQUARE */
-        case 4: x = x < 0.5f ? 4.0f * x - 1.0f : 3.0f - 4.0f * x;    /* STAIRS: das Dreieck in 8 Stufen, wie im Chip */
-            x = (float)(int)((x + 1.0f) * 3.999f) * (2.0f / 7.0f) - 1.0f; break;
-        default:                                                    /* CHANCE: je Welle ein neuer Zufallswert */
-            if (E.om_ph < ph0)
-                E.om_sh = rng_f(&E.rng) * 2.0f - 1.0f;
-            x = E.om_sh;
-            break;
+        for (l = 0; l < FK_NOMEN; l++) {
+            int o = P_OMEN + 4 * l, rv = E.raw[o], sh = (E.raw[o + 1] * FK_NSHAPE) >> 7,
+                pa = (E.raw[o + 3] * FK_NPATH) >> 7;
+            float pw = E.sm[o + 2], ph0 = E.om_ph[l], x, d, up;
+            const float *w = PW[pa];
+            if (omen_sync_bpm > 0.0f) {
+                float cpb = OMEN_CPB[(rv * 8) >> 7];
+                E.om_ph[l] = wrap1(E.om_ph[l] + cpb * omen_sync_bpm * (1.0f / 240.0f) * (float)n / FK_SR);
+                if (newbar)                   /* ein neuer Takt: die Phase genau dorthin, wo sie hingehört */
+                    E.om_ph[l] = wrap1((float)E.om_bar * cpb);
+            } else {
+                E.om_ph[l] = wrap1(E.om_ph[l] + omen_hz(rv) * (float)n / FK_SR);
+            }
+            x = E.om_ph[l];
+            switch (sh) {
+            case 0: x = -fk_sin(x); break;                              /* SINE */
+            case 1: x = x < 0.5f ? 4.0f * x - 1.0f : 3.0f - 4.0f * x; break;   /* TRIANGLE */
+            case 2: x = 1.0f - 2.0f * x; break;                         /* SAW (fällt) */
+            case 3: x = x < 0.5f ? 1.0f : -1.0f; break;                 /* SQUARE */
+            case 4: x = x < 0.5f ? 4.0f * x - 1.0f : 3.0f - 4.0f * x;    /* STAIRS: das Dreieck in 8 Stufen, wie im Chip */
+                x = (float)(int)((x + 1.0f) * 3.999f) * (2.0f / 7.0f) - 1.0f; break;
+            default:                                                    /* CHANCE: je Welle ein neuer Zufallswert */
+                if (E.om_ph[l] < ph0)
+                    E.om_sh[l] = rng_f(&E.rng) * 2.0f - 1.0f;
+                x = E.om_sh[l];
+                break;
+            }
+            if (sh == 3 || sh == 5)                                     /* Sprünge: ganz kurz geglättet, kein Klicken */
+                E.om_v[l] += (x - E.om_v[l]) * clampf((float)n / (FK_SR * 0.004f), 0.0f, 1.0f);
+            else
+                E.om_v[l] = x;
+            x = E.om_v[l];
+            d = x * pw;
+            up = pw * (0.5f + 0.5f * x);                                /* nur in eine Richtung (0..POWER) */
+            E.om_out[l] = d;
+            if (pw < 0.001f)
+                continue;
+            t[0] += d * w[0];
+            t[1] -= up * w[1];
+            t[2] += d * w[2];
+            t[3] += d * w[3];
+            vol *= 1.0f - up * w[4];
+            t[5] += d * w[5];
+            t[6] += up * w[6];
+            t[7] += up * w[7];
+            t[8] += up * w[8];
         }
-        if (sh == 3 || sh == 5)                                     /* Sprünge: ganz kurz geglättet, kein Klicken */
-            E.om_v += (x - E.om_v) * clampf((float)n / (FK_SR * 0.004f), 0.0f, 1.0f);
-        else
-            E.om_v = x;
-        x = E.om_v;
-        d = x * pw;
-        E.om_out = d;
-        E.om_pitch = d * w[0];
-        E.om_torch = -pw * w[1] * (0.5f + 0.5f * x);               /* das Filter schließt sich (nur nach unten) */
-        k.r = clampf(k.r + d * w[2], 0.0f, 0.999f);
-        k.c = clampf(k.c + d * w[3], -1.0f, 1.0f);
-        k.a = clampf(k.a + d * w[5], 0.0f, 0.999f);
-        E.om_rune = d * w[2];
-        E.om_curse = d * w[3];
-        E.om_alch = d * w[5];
-        E.om_vol = 1.0f - pw * w[4] * (0.5f + 0.5f * x);
-        E.om_aura = pw * w[6] * (0.5f + 0.5f * x);
-        E.om_lofi = pw * w[7] * (0.5f + 0.5f * x);
+        for (j = 0; j < 9; j++)
+            t[j] = j == 1 ? clampf(t[j], -9.0f, 0.0f) : j == 0 ? t[j] : clampf(t[j], -1.0f, 1.0f);
+        E.om_pitch = t[0];
+        E.om_torch = t[1];
+        k.r = clampf(k.r + t[2], 0.0f, 0.999f);
+        k.c = clampf(k.c + t[3], -1.0f, 1.0f);
+        k.a = clampf(k.a + t[5], 0.0f, 0.999f);
+        E.om_rune = t[2];
+        E.om_curse = t[3];
+        E.om_alch = t[5];
+        E.om_vol = vol;
+        E.om_aura = t[6];
+        E.om_lofi = t[7];
+        E.om_morph = t[8];
     }
     /* die Tonhöhe: Gleiten, Vibrato (in der Bildrate, stufig wie im Tracker), PORTAL */
     sm = E.sm[P_CREEP];
@@ -927,7 +953,7 @@ void fk_render(float *l, float *r, int n)
         static const float GAIN[FK_NALGO] = {1.0f, 1.4f, 1.3f, 1.65f, 1.55f, 1.6f, 2.6f, 1.25f,
                                              1.4f, 1.6f, 2.2f, 1.75f, 1.2f, 1.15f, 1.05f, 1.3f};
         static float bl[FK_BLOCK_MAX], br[FK_BLOCK_MAX];
-        float m = E.sm[P_QUEST], ga, gb;
+        float m = clampf(E.sm[P_QUEST] + E.om_morph, 0.0f, 1.0f), ga, gb;   /* (OMEN kann mitschieben) */
         int nx = (E.algo + 1) % FK_NALGO;
         ctl kb = k;
         for (i = 0; i < 4; i++)

@@ -38,7 +38,8 @@ static float mem_df[FK_DF_N] __attribute__((section(".pool")));
 static float mem_res[FK_NRES][FK_RS_N] __attribute__((section(".pool")));
 
 /* ------------------------------------------------------------- Speicher --- */
-#define SET_MAGIC 0x36475247u            /* "GRG6": mit OMEN */
+#define SET_MAGIC 0x37475247u            /* "GRG7": vier OMEN */
+#define SET_MAGIC6 0x36475247u           /* "GRG6" (v0.1.2, v0.1.3): ein OMEN */
 #define SET_MAGIC4 0x34475247u           /* "GRG4" (v0.1.0): wird übernommen, QUEST auf 0 */
 #define SET_MAGIC5 0x35475247u           /* "GRG5" (v0.1.1): wird übernommen */
 #define NSNAP 8
@@ -76,53 +77,58 @@ static void settings_defaults(void)
         set.grv.p[a] = GR_INIT[a];
 }
 
-/* v0.1.0 (GRG4) und v0.1.1 (GRG5): SPELL hatte nur 4 globale Regler, noch kein OMEN; in v0.1.0 war QUEST die Variante */
-#define NG4 4
-typedef struct {
-    uint8_t used, algo, oct, rsv;
-    uint8_t p[FK_NPA];
-    uint8_t g[NG4];
-} snap4_t;
-typedef struct {
-    uint32_t magic;
-    uint8_t algo, oct, hold, snap;
-    uint8_t p[FK_NALGO][FK_NPA];
-    uint8_t g[NG4];
-    gr_set grv;
-    uint8_t wrath, rsv;
-    snap4_t snaps[NSNAP];
-} settings4_t;
+/* ältere Speicherstände übernehmen: v0.1.0 (GRG4, QUEST war die Variante) und v0.1.1 (GRG5) mit 4 globalen Reglern,
+ * v0.1.2 / v0.1.3 (GRG6) mit 8 (ein OMEN); sonst gleich gebaut, nur Bytes hintereinander */
+static int settings_migrate(const uint8_t *o, int got)
+{
+    uint32_t mg = (uint32_t)o[0] | (uint32_t)o[1] << 8 | (uint32_t)o[2] << 16 | (uint32_t)o[3] << 24;
+    int ng = mg == SET_MAGIC4 || mg == SET_MAGIC5 ? 4 : mg == SET_MAGIC6 ? 8 : 0, a, i, q = mg == SET_MAGIC4;
+    int size = 4 + 4 + FK_NALGO * FK_NPA + ng + (int)sizeof(gr_set) + 2 + NSNAP * (4 + FK_NPA + ng);
+    const uint8_t *r;
+    if (!ng || got != ((size + 3) & ~3))
+        return 0;
+    settings_defaults();
+    set.algo = o[4];
+    set.oct = o[5];
+    set.hold = o[6];
+    set.snap = o[7];
+    r = o + 8;
+    memcpy(set.p, r, sizeof set.p);
+    r += sizeof set.p;
+    memcpy(set.g, r, (uint32_t)ng);
+    r += ng;
+    memcpy(&set.grv, r, sizeof set.grv);
+    r += sizeof set.grv;
+    set.wrath = r[0];
+    r += 2;
+    for (i = 0; i < NSNAP; i++, r += 4 + FK_NPA + ng) {
+        set.snaps[i].used = r[0];
+        set.snaps[i].algo = r[1];
+        set.snaps[i].oct = r[2];
+        memcpy(set.snaps[i].p, r + 4, FK_NPA);
+        memcpy(set.snaps[i].g, FK_GLOBAL_INIT, FK_NPG);
+        memcpy(set.snaps[i].g, r + 4 + FK_NPA, (uint32_t)ng);
+        if (q)
+            set.snaps[i].p[P_QUEST] = 0;
+    }
+    for (a = 0; q && a < FK_NALGO; a++)
+        set.p[a][P_QUEST] = 0;
+    if (ng == 8) {                       /* PATH hatte 8 Stufen, jetzt 9 (MORPH dazu): dieselbe Stufe behalten */
+        set.g[P_PATH - FK_NPA] = (uint8_t)(((set.g[P_PATH - FK_NPA] * 8 >> 7) * 128 + 64) / FK_NPATH);
+        for (i = 0; i < NSNAP; i++)
+            set.snaps[i].g[P_PATH - FK_NPA] = (uint8_t)(((set.snaps[i].g[P_PATH - FK_NPA] * 8 >> 7) * 128 + 64) / FK_NPATH);
+    }
+    return 1;
+}
 
 static void settings_load(void)
 {
-    int a, i, got = plat_store_load(OBJ_SETTINGS, &set, sizeof set), ok;
-    if (got == (int)sizeof(settings4_t) && (set.magic == SET_MAGIC4 || set.magic == SET_MAGIC5)) {   /* übernehmen */
-        static settings4_t o;
-        int old = set.magic == SET_MAGIC4;
-        memcpy(&o, &set, sizeof o);
-        settings_defaults();
-        set.algo = o.algo;
-        set.oct = o.oct;
-        set.hold = o.hold;
-        set.snap = o.snap;
-        memcpy(set.p, o.p, sizeof o.p);
-        memcpy(set.g, o.g, NG4);
-        set.grv = o.grv;
-        set.wrath = o.wrath;
-        for (i = 0; i < NSNAP; i++) {
-            set.snaps[i].used = o.snaps[i].used;
-            set.snaps[i].algo = o.snaps[i].algo;
-            set.snaps[i].oct = o.snaps[i].oct;
-            memcpy(set.snaps[i].p, o.snaps[i].p, FK_NPA);
-            memcpy(set.snaps[i].g, o.snaps[i].g, NG4);
-            memcpy(set.snaps[i].g + NG4, FK_GLOBAL_INIT + NG4, FK_NPG - NG4);
-            if (old)
-                set.snaps[i].p[P_QUEST] = 0;
-        }
-        for (a = 0; old && a < FK_NALGO; a++)
-            set.p[a][P_QUEST] = 0;
+    static uint8_t raw[sizeof(settings_t)];
+    int a, i, got = plat_store_load(OBJ_SETTINGS, raw, sizeof raw), ok;
+    if (settings_migrate(raw, got))
         got = (int)sizeof set;
-    }
+    else if (got > 0)
+        memcpy(&set, raw, (uint32_t)got);
     ok = got == (int)sizeof set && set.magic == SET_MAGIC && set.algo < FK_NALGO && set.oct <= 4u && set.hold <= 1u
          && set.snap <= NSNAP && set.grv.on <= 1u && set.grv.style < GR_NSTYLES && set.wrath <= 127u;
     for (i = 0; ok && i < NSNAP; i++)
@@ -210,11 +216,15 @@ static void e_off(int note)
 }
 
 /* ------------------------------------------------------------------ Seiten --- */
-enum { PG_SUMMON, PG_GROOVE, PG_SETUP, PG_ECHO, PG_RITUAL, PG_LORE, PG_SPELL, PG_OMEN, NPAGES };
-static const char *const PAGE_NAME[NPAGES] = {"SUMMON", "GROOVE", "SETUP", "ECHO", "RITUAL", "LORE", "SPELL", "OMEN"};
+enum { PG_SUMMON, PG_GROOVE, PG_SETUP, PG_ECHO, PG_RITUAL, PG_LORE, PG_SPELL, PG_OMEN, PG_OMEN2, PG_OMEN3, PG_OMEN4,
+       NPAGES };
+static const char *const PAGE_NAME[NPAGES] = {"SUMMON", "GROOVE", "SETUP", "ECHO", "RITUAL", "LORE", "SPELL",
+                                              "OMEN", "OMEN", "OMEN", "OMEN"};
+static const char *const OMEN_NUM[4] = {"I", "II", "III", "IV"};
+#define OMEN_PAGE(pg) ((pg) >= PG_OMEN)
 /* was ein Regler ist: ein Parameter der Engine (SRC_P) oder einer des GROOVE (SRC_G) */
 enum { SRC_P, SRC_G };
-static const uint8_t PAGE_SRC[NPAGES] = {SRC_P, SRC_G, SRC_G, SRC_P, SRC_P, SRC_P, SRC_P, SRC_P};
+static const uint8_t PAGE_SRC[NPAGES] = {SRC_P, SRC_G, SRC_G, SRC_P, SRC_P, SRC_P, SRC_P, SRC_P, SRC_P, SRC_P, SRC_P};
 static const uint8_t PAGE_IDX[NPAGES][4] = {
     {P_CURSE, P_HORDE, P_RUNE, P_ALCHEMY},
     {GR_DENS, GR_BREATH, GR_DIST, GR_TEMPO},
@@ -224,6 +234,9 @@ static const uint8_t PAGE_IDX[NPAGES][4] = {
     {P_CREEP, P_WANDER, P_BITS, P_VOLUME},
     {P_AGE, P_AURA, P_SPEED, P_WIDTH},
     {P_RATE, P_SHAPE, P_POWER, P_PATH},
+    {P_RATE + 4, P_SHAPE + 4, P_POWER + 4, P_PATH + 4},
+    {P_RATE + 8, P_SHAPE + 8, P_POWER + 8, P_PATH + 8},
+    {P_RATE + 12, P_SHAPE + 12, P_POWER + 12, P_PATH + 12},
 };
 
 static uint8_t *pval(int p) { return p >= FK_NPA ? &set.g[p - FK_NPA] : &set.p[set.algo][p]; }
@@ -403,9 +416,10 @@ static void knob_turn(int k, int32_t e)
     int v = *p, nv, src = PAGE_SRC[ui.page], idx = PAGE_IDX[ui.page][k];
     ui.knob_at[k] = plat_ms();
     ui.redraw |= (uint32_t)R_ROW0 << k;
-    if (src == SRC_P && (idx == P_SHAPE || idx == P_PATH || (idx == P_RATE && fk_synced_ui()))) {
+    int om = src == SRC_P && idx >= P_OMEN ? (idx - P_OMEN) % 4 : -1;   /* 0 RATE, 1 SHAPE, 2 POWER, 3 PATH */
+    if (om == 1 || om == 3 || (om == 0 && fk_synced_ui())) {
         /* OMEN: SHAPE, PATH und RATE im Takt springen je Raste eine Stufe weiter (auf die Mitte der Stufe) */
-        int nz = idx == P_SHAPE ? FK_NSHAPE : 8, z = iclamp((v * nz >> 7) + (e > 0 ? 1 : -1), 0, nz - 1);
+        int nz = om == 1 ? FK_NSHAPE : om == 3 ? FK_NPATH : 8, z = iclamp((v * nz >> 7) + (e > 0 ? 1 : -1), 0, nz - 1);
         nv = (z * 128 + 64) / nz;
     } else if (src == SRC_G && idx == GR_FOLLOW) {          /* FOLLOW: an / aus */
         nv = e > 0 ? 127 : 0;
@@ -644,7 +658,7 @@ static void button(uint32_t i)
     case B_ENV: page_set(PG_RITUAL); break;
     case B_EDIT: page_set(PG_LORE); break;
     case B_GLO: page_set(PG_SPELL); break;
-    case B_LFO: page_set(PG_OMEN); break;
+    case B_LFO: page_set(OMEN_PAGE(ui.page) && ui.page < PG_OMEN4 ? ui.page + 1 : PG_OMEN); break;   /* OMEN I..IV */
     case B_PLAY: hold_set(!set.hold); break;
     case B_REC: ui.rec_t = plat_ms(); break;
     case B_SEQ: ui.seq_t = plat_ms(); break;
@@ -774,7 +788,7 @@ static void lights(void)
 {
     uint32_t now = plat_ms(), btn = 0, dimb = (1u << NB) - 1u, lit = 0, k;
     {
-        static const uint8_t PB[NPAGES] = {B_HOME, B_HOME, B_HOME, B_FX, B_ENV, B_EDIT, B_GLO, B_LFO};
+        static const uint8_t PB[NPAGES] = {B_HOME, B_HOME, B_HOME, B_FX, B_ENV, B_EDIT, B_GLO, B_LFO, B_LFO, B_LFO, B_LFO};
         btn |= 1u << PB[ui.page];
     }
     if (set.grv.on && gr_running() && now - ui.beat_at < 90u)   /* GROOVE: HOME blitzt mit jedem Schlag */
@@ -840,7 +854,9 @@ static const char *const HERO_CLASS[4] = {"FIGHTER", "DWARF", "ELF", "MAGE"};
  * WRATH ab der Hälfte: der Drache; FREEZE: alles eisblau; SAVE gehalten (Snapshots): der Schatz */
 enum { SC_ORC, SC_DRAGON, SC_ORB, SC_SKELETON, SC_SLIME, SC_BEHOLDER, SC_TREASURE, SC_WATER };
 static const uint8_t PAGE_SCENE[NPAGES] = {SC_ORC, SC_SKELETON, SC_TREASURE, SC_ORB, SC_SLIME, SC_BEHOLDER, SC_WATER,
-                                           SC_ORB};
+                                           SC_ORB, SC_ORB, SC_ORB, SC_ORB};
+/* OMEN I..IV: die Farbe der Kugel (violett, grün, bernstein, blau), r g b in 1/8 */
+static const uint8_t OMEN_TINT[4][3] = {{6, 3, 7}, {3, 7, 4}, {8, 5, 2}, {3, 5, 8}};
 static int snap_mode(void);
 static int scene_now(void)
 {
@@ -1052,8 +1068,8 @@ static void view(uint32_t now)
     float beat = set.grv.on && gr_running() ? sat01(1.0f - (float)(now - ui.beat_at) / 180.0f) : 0.0f;
     float fl = 0.93f + 0.05f * fm_sinf(t * 17.0f) + 0.03f * fm_sinf(t * 31.0f) + 0.10f * lvl + 0.10f * beat;
     float wr = (float)set.wrath / 127.0f, tr = 1.0f;
-    int frozen = fk_frozen(), omen = scene_now() == SC_ORB && ui.page == PG_OMEN;
-    float om = omen ? fk_omen() : 0.0f;
+    int frozen = fk_frozen(), omen = scene_now() == SC_ORB && OMEN_PAGE(ui.page), ol = omen ? ui.page - PG_OMEN : 0;
+    float om = omen ? fk_omen(ol) : 0.0f;
     if (omen)                            /* OMEN: die Kugel pulsiert mit dem LFO */
         fl *= 0.85f + 0.35f * (0.5f + 0.5f * om);
     int32_t x, y, xa, xb, ya, yb;
@@ -1083,11 +1099,11 @@ static void view(uint32_t now)
                     g = (g + l * 2) / 2;
                     b = (b + l * 3) / 2;
                 }
-                if (omen) {              /* OMEN: violett */
+                if (omen) {              /* OMEN I..IV: die Kugel in ihrer Farbe */
                     int32_t l = (r * 2 + g + b * 2) / 5;
-                    r = (r + l) * 5 / 8;
-                    g = (g + l) * 3 / 8;
-                    b = (b * 3 + l * 2) / 4;
+                    r = ((r + l) * OMEN_TINT[ol][0]) >> 4;
+                    g = ((g + l) * OMEN_TINT[ol][1]) >> 4;
+                    b = ((b + l) * OMEN_TINT[ol][2]) >> 4;
                 }
                 r = (r * kr) >> 8;
                 g = (g * (frozen ? kq : (int32_t)((float)kq * (1.0f - 0.25f * wr)))) >> 8;
@@ -1144,6 +1160,12 @@ static void dome(uint32_t now)
         heart(cx, cy - 11.0f, 7.0f + 1.6f * beat, set.grv.on ? 1.0f : 0.0f, RED, GOLD_DIM);
         if (beat > 0.0f)
             s_bloom(cx, cy - 11.0f, 14.0f, RED, 0.35f * beat);
+    } else if (OMEN_PAGE(ui.page)) {      /* OMEN: die Nummer des LFO in seiner Farbe, sie pulsiert mit */
+        const uint8_t *c = OMEN_TINT[ui.page - PG_OMEN];
+        float p = 0.6f + 0.4f * (0.5f + 0.5f * fk_omen(ui.page - PG_OMEN));
+        s_bloom(cx, cy - 13.0f, 13.0f, rgb3(c[0] * 30.0f, c[1] * 30.0f, c[2] * 30.0f), 0.5f * p);
+        s_ctext(cx, cy - 20.0f, &FONT_SERIF_M, OMEN_NUM[ui.page - PG_OMEN],
+                RGB((int)(c[0] * 31.0f * p), (int)(c[1] * 31.0f * p), (int)(c[2] * 31.0f * p)), 1);
     } else {
         int_text(set.algo + 1, t);
         s_ctext(cx, cy - 20.0f, &FONT_SERIF_M, t, C_GOLD_HI, 1);
