@@ -6,8 +6,7 @@ GROOVE aus Dungeon-Geräuschen statt Drums.
 
 ## Der Start
 
-Der Bildschirm ist schwarz, der Schriftzug GARGOYLE erscheint, darüber öffnen sich die Augen eines Drachen – ein
-Feuerstoß erhellt alles von unten. Eine Taste oder ein Knopf überspringt das Intro.
+Zwei Fackeln entzünden sich, darunter erscheint GARGOYLE in Goldbuchstaben auf einem Felsbrocken. Eine Taste oder ein Knopf überspringt das Intro.
 
 HOLD ist von Anfang an an: Eine Taste startet den Drone, und er bleibt stehen. Weitere Tasten ändern nur noch den
 Grundton.
@@ -16,9 +15,10 @@ Grundton.
 
 - **Oben:** die Nummer des Raums im roten Siegel, sein Name, darunter der Algorithmus. Rechts ein Herz: Es schlägt mit
   dem GROOVE.
-- **Links oben:** der Blick in den Gang, wie in den Dungeon-Spielen der 90er – jeder Raum hat seinen Stein (rote Ziegel,
-  blauer Stein, Moos, Sandstein, Gruft). Am Ende lauert im Dunkeln ein Drache: Man sieht nur seine Augen und die Glut.
-  Fackeln und Augen leuchten mit dem Klang, mit FREEZE wird alles eisblau.
+- **Links oben:** der Blick in den Gang, wie in den Dungeon-Spielen der 90er –  Jede Seite hat ihren eigenen Gang und ihr eigenes Monster, das
+  im Dunkeln lauert – so weiß man sofort, wo man ist: PLAY rote Ziegel und ein Drache, GROOVE die Gruft und Ratten,
+  SETUP Sandstein und eine Spinne, DEEP Moos und ein Auge, FX blauer Stein und ein Geist. Fackeln und Augen leuchten
+  mit dem Klang, mit FREEZE wird alles eisblau.
 - **Rechts:** die Kuppel mit der Nummer des Raums (im GROOVE: die 16 Schritte), die Seite, HOLD, Oktave, Akku.
 - **Die vier Helden:** die Regler K1–K4, jeder mit fester Farbe und Waffe: **Rot** K1 (Schwert), **Orange** K2 (Axt),
   **Grün** K3 (Bogen), **Blau** K4 (Stab). Der helle Strich im Balken ist der Sweetspot.
@@ -65,7 +65,7 @@ FX gilt für alle Räume gleich.
 
 PRESET wechselt den Raum (der Blick wird für einen Schritt dunkel).
 
-**SELECT ist WRATH**: ein Makro über allem, gemacht für live. Der Drache am Ende des Gangs erwacht – Kreuzmodulation und Sättigung bis zum Anschlag, die Rückkopplung kocht, Metall in der Frequenzverschiebung, mehr Hall; seine Augen werden rot. 4 Schritte pro Raste, bleibt beim Raumwechsel.
+**SELECT ist WRATH**: ein Makro über allem, gemacht für live. Das Monster am Ende des Gangs erwacht – Kreuzmodulation und Sättigung bis zum Anschlag, die Rückkopplung kocht, Metall in der Frequenzverschiebung, mehr Hall; seine Augen werden rot. 4 Schritte pro Raste, bleibt beim Raumwechsel.
 Jeder Raum merkt sich seine Makros, DEEP, SEED und SCAN.
 
 | Nr. | Raum | Algorithmus | Nr. | Raum | Algorithmus |

@@ -26,7 +26,7 @@ Manuals: [Deutsch](docs/HANDBUCH.md), [English](docs/MANUAL.md).
 | HOME 3×: SETUP | LEVEL, HUMAN (randomness), FOLLOW (tuned to the root), TUNE (±12 semitones) |
 | EDIT: DEEP | COLOR, GLIDE, WIDTH, LEVEL |
 | FX | MODE (DREAM, DARK, RISE, LIGHT, RAIN), X (vibrato, octave down, swell, shimmer, diffuse), ECHO, AGE |
-| SELECT | **WRATH**: one macro over everything, made for live – the dragon wakes up (cross modulation, saturation, boiling feedback, metal, more reverb), 4 a detent |
+| SELECT | **WRATH**: one macro over everything, made for live – the monster wakes up (cross modulation, saturation, boiling feedback, metal, more reverb), 4 a detent |
 | PRESET | the room (1–22) |
 | ALGORITHM | SCAN (coarse); on the GROOVE pages: the style |
 | PLAY | HOLD (on from the start): the drone stays, keys only change the root |

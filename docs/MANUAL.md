@@ -6,15 +6,15 @@ noises instead of drums.
 
 ## Start
 
-The screen is black, the name GARGOYLE appears, the eyes of a dragon open above it, a burst of fire lights everything
-from below. Any key or button skips the intro. HOLD is on from the start: a key starts the drone and it stays;
+Two torches light up, under them GARGOYLE appears in gold letters on a slab of rock. Any key or button skips the intro. HOLD is on from the start: a key starts the drone and it stays;
 further keys only change the root.
 
 ## The screen
 
-- **Top left:** the view down the corridor, like the dungeon games of the 90s; every room has its stone. In the dark at
-  the end lurks a dragon: only its eyes and the glow of its fire. Torches and eyes glow with the sound, FREEZE turns it
-  ice blue.
+- **Top left:** the view down the corridor, like the dungeon games of the 90s; Every page has its own corridor and its own
+  monster lurking in the dark, so you always know where you are: PLAY red bricks and a dragon, GROOVE the crypt and
+  rats, SETUP sandstone and a spider, DEEP moss and an eye, FX blue stone and a ghost. Torches and eyes glow with the
+  sound, FREEZE turns it ice blue.
 - **Right:** the dome with the room's number (on the GROOVE pages the 16 steps), the page, HOLD, octave, battery.
 - **The four heroes:** knobs K1–K4, each with a fixed colour and weapon on every page: **red** K1, **orange** K2,
   **green** K3, **blue** K4. The light mark in a bar is the sweetspot.
@@ -42,7 +42,7 @@ darker, grainier reverb).
 
 ## Rooms
 
-PRESET changes the room (the view goes dark for a step). SELECT is WRATH: one macro over everything for live play – the dragon at the end of the corridor wakes up, its eyes burn red; 4 a detent, it stays when you change rooms. Each room keeps its macros, DEEP, SEED and
+PRESET changes the room (the view goes dark for a step). SELECT is WRATH: one macro over everything for live play – the monster at the end of the corridor wakes up; 4 a detent, it stays when you change rooms. Each room keeps its macros, DEEP, SEED and
 SCAN. 1 CRYPT, 2 FORGE, 3 CRYSTAL CAVE, 4 WATCHTOWER, 5 CHAPEL, 6 THRONE HALL, 7 BELFRY, 8 THE WELL, 9 MIST HALL,
 10 THE VOID, 11 ECHO SHAFT, 12 DUNGEON, 13 ROOST, 14 ORACLE, 15 STORM GATE, 16 MASONRY, 17 ABYSS, 18 GREAT HALL,
 19 RUNE VAULT, 20 LABYRINTH, 21 TREASURY, 22 GHOST HALL (the algorithms of FIKH-S in their order).
