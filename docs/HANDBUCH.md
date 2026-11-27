@@ -16,8 +16,9 @@ Grundton.
 - **Oben:** die Nummer des Raums im roten Siegel, sein Name, darunter der Algorithmus. Rechts ein Herz: Es schlägt mit
   dem GROOVE.
 - **Links oben:** der Blick in den Gang, wie in den Dungeon-Spielen der 90er –  Jede Seite hat ihren eigenen Gang und ihr eigenes Monster, das
-  im Dunkeln lauert – so weiß man sofort, wo man ist: PLAY rote Ziegel und ein Drache, GROOVE die Gruft und Ratten,
-  SETUP Sandstein und eine Spinne, DEEP Moos und ein Auge, FX blauer Stein und ein Geist. Fackeln und Augen leuchten
+  im Dunkeln lauert – so weiß man sofort, wo man ist: PLAY ein Ork, GROOVE ein Skelett, SETUP ein Schleim, DEEP ein
+  Betrachter, FX eine Kristallkugel. Mit WRATH ab der Hälfte erscheint der Drache in seiner Lava-Höhle, mit FREEZE das
+  Wasser mit dem Tentakelmonster, mit gehaltenem SAVE (Snapshots) die Schatzkammer. Fackeln und Augen leuchten
   mit dem Klang, mit FREEZE wird alles eisblau.
 - **Rechts:** die Kuppel mit der Nummer des Raums (im GROOVE: die 16 Schritte), die Seite, HOLD, Oktave, Akku.
 - **Die vier Helden:** die Regler K1–K4, jeder mit fester Farbe und Waffe: **Rot** K1 (Schwert), **Orange** K2 (Axt),

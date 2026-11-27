@@ -911,11 +911,22 @@ static void lights(void)
 
 static const col3 HERO[4] = {{226, 70, 52}, {236, 150, 44}, {96, 196, 96}, {96, 150, 240}};
 static const char *const HERO_CLASS[4] = {"FIGHTER", "DWARF", "ELF", "MAGE"};
-/* jede Seite ihr eigener Gang mit ihrem eigenen Monster (so merkt man sich, wo man ist):
- * PLAY rote Ziegel, ein Drache; GROOVE die Gruft, Ratten; SETUP Sandstein, eine Spinne; DEEP Moos, ein Betrachter mit
- * einem großen Auge; FX blauer Stein, ein Geist. (Steine: 0 rot, 1 blau, 2 Moos, 3 Sand, 4 Gruft) */
-static const uint8_t PAGE_PAL[NPAGES] = {0, 4, 3, 2, 1};
-static const char *const PAGE_BEAST[NPAGES] = {"A DRAGON", "THE RATS", "A SPIDER", "AN EYE", "A GHOST"};
+/* jede Seite ihr eigener Raum mit ihrem eigenen Monster (so merkt man sich, wo man ist); die Bilder: art.h
+ * PLAY Ork, GROOVE Skelett, SETUP Schleim, DEEP Betrachter, FX Kristallkugel; WRATH ab der Hälfte: der Drache;
+ * FREEZE: das Wasser; SAVE gehalten (Snapshots): der Schatz */
+enum { SC_ORC, SC_DRAGON, SC_ORB, SC_SKELETON, SC_SLIME, SC_BEHOLDER, SC_TREASURE, SC_WATER };
+static const uint8_t PAGE_SCENE[NPAGES] = {SC_ORC, SC_SKELETON, SC_SLIME, SC_BEHOLDER, SC_ORB};
+static int snap_mode(void);
+static int scene_now(void)
+{
+    if (snap_mode() == 2)
+        return SC_TREASURE;
+    if (fk_frozen())
+        return SC_WATER;
+    if (set.wrath >= 64)
+        return SC_DRAGON;
+    return PAGE_SCENE[ui.page];
+}
 
 #define SCOPE_N 1024u
 static float scope_ring[SCOPE_N];
@@ -1107,142 +1118,18 @@ static int batt_pct(int lvl)
 }
 
 /* ---- der Gang ---- */
-/* eine Fackel: die Flamme flackert, hell mit dem Klang (und jedem Schlag des GROOVE) */
-static void torch_flame(float x, float y, float t, float lvl, float beat, int frozen)
-{
-    float fl = 0.78f + 0.14f * fm_sinf(t * 21.0f + x) + 0.08f * fm_sinf(t * 43.0f + x * 0.7f) + 0.25f * beat;
-    col3 fc = frozen ? rgb3(110, 180, 255) : FIRE, core = frozen ? rgb3(225, 245, 255) : rgb3(255, 226, 140);
-    s_bloom(x, y - 3.0f, 15.0f + 6.0f * lvl + 6.0f * beat, fc, (0.22f + 0.22f * lvl + 0.2f * beat) * fl);
-    s_line(x - 2.5f, y + 3.0f, x + 2.5f, y + 3.0f, rgb3(40, 30, 22), 1.0f);    /* der Halter, Eisen */
-    s_line(x, y + 3.0f, x, y + 10.0f, rgb3(46, 34, 26), 1.0f);
-    s_line(x - 1.5f, y + 10.0f, x + 1.5f, y + 10.0f, rgb3(60, 46, 34), 1.0f);
-    s_disc(x, y, 2.8f * fl, fc, 0.95f);
-    s_disc(x + 0.5f * fm_sinf(t * 15.0f), y - 3.2f * fl, 1.9f * fl, fc, 0.85f);
-    s_disc(x - 0.3f * fm_sinf(t * 23.0f), y - 5.6f * fl, 1.0f * fl, fc, 0.6f);
-    s_disc(x, y + 0.4f, 1.3f, core, 0.95f);
-}
-
-/* der Drache im Dunkeln: man sieht nur seine Augen (Bernstein, ein senkrechter Schlitz), darunter die Glut in
- * seinem Rachen und Funken, die aufsteigen. open 0..1, glow 0..1, wr: WRATH (die Augen weiter auf, der Schlitz enger,
- * das Feuer stärker) */
-static void dragon(float cx, float cy, float sc, float open, float glow, float wr, float t, int frozen)
-{
-    int s, i;
-    col3 iris0 = frozen ? rgb3(160, 220, 255) : rgb3(255, 214, 90), iris1 = frozen ? rgb3(40, 90, 200) : rgb3(230, 70, 10);
-    float fire = sat01(0.25f + 0.5f * glow + 0.6f * wr);
-    if (!frozen) {                       /* die Glut im Rachen, unter den Augen */
-        s_bloom(cx, cy + 16.0f * sc, (10.0f + 10.0f * fire) * sc, rgb3(255, 90, 20), 0.18f * fire * open);
-        s_bloom(cx, cy + 15.0f * sc, (4.0f + 4.0f * fire) * sc, rgb3(255, 190, 80), 0.25f * fire * open);
-        for (i = 0; i < 6; i++) {        /* Funken steigen auf */
-            uint32_t h = (uint32_t)i * 2654435761u;
-            float ph = t * (0.35f + 0.1f * (float)(h >> 28)) + (float)(h >> 20 & 255u) / 255.0f, u = ph - fm_floorf(ph);
-            float ex = cx + ((float)(h >> 8 & 255u) / 255.0f - 0.5f) * 26.0f * sc + 3.0f * fm_sinf(t * 3.0f + (float)i);
-            float ey = cy + (16.0f - 30.0f * u) * sc;
-            s_disc(ex, ey, 0.55f * sc, rgb3(255, 170, 60), (1.0f - u) * fire * open);
-        }
-    }
-    for (s = -1; s <= 1; s += 2) {
-        float ex = cx + (float)s * 11.0f * sc, ey = cy, w = 5.5f * sc, h = (2.2f + 1.2f * wr) * sc * open, u;
-        float tilt = (float)s * 0.22f;   /* schräg nach innen: böse */
-        if (open <= 0.02f)
-            continue;
-        s_bloom(ex, ey, (6.0f + 4.0f * glow + 4.0f * wr) * sc, iris1, (0.22f + 0.25f * glow + 0.25f * wr) * open);
-        for (u = -w; u <= w; u += 0.5f) {   /* das Auge: eine Mandel, der Rand dunkel, innen hell */
-            float k = h * (1.0f - (u / w) * (u / w)), yy = ey + u * tilt, v;
-            for (v = -k; v <= k; v += 0.5f) {
-                float r = fm_sqrtf((u / w) * (u / w) + (v / (h + 0.01f)) * (v / (h + 0.01f)));
-                col3 c = mix3(iris0, iris1, sat01(r * 1.1f));
-                float pw = (0.45f - 0.3f * wr) * sc;            /* der Schlitz */
-                if (u > -pw && u < pw && r < 0.95f)
-                    c = rgb3(10, 4, 2);
-                s_rect(ex + u, yy + v, 0.5f, 0.5f, c, 1.0f);
-            }
-        }
-        s_disc(ex - 1.6f * sc, ey - 0.8f * sc * open, 0.45f * sc, rgb3(255, 250, 230), 0.8f * open);
-        s_line(ex - w - 1.0f, ey - h - 1.5f * sc - (float)s * w * tilt, ex + w + 1.0f, ey - h - 0.5f * sc + (float)s * w * tilt,
-               rgb3(0, 0, 0), 0.8f);     /* die Braue: ein Schatten darüber */
-    }
-}
-
-/* die anderen Monster: nur ihre Augen (und was im Dunkeln glimmt), jedes anders */
-static void eye_dot(float x, float y, float r, col3 c, float a)
-{
-    s_bloom(x, y, r * 4.0f, c, 0.35f * a);
-    s_disc(x, y, r, c, a);
-    s_disc(x - r * 0.3f, y - r * 0.3f, r * 0.35f, rgb3(255, 255, 230), 0.7f * a);
-}
-static void beast(int pg, float cx, float cy, float open, float glow, float wr, float t, float beat, int frozen)
-{
-    int i;
-    float a = open * (0.6f + 0.4f * sat01(glow + wr));
-    if (frozen && pg != PG_FX)
-        glow *= 0.5f;
-    switch (pg) {
-    case PG_GROOVE:                      /* Ratten: drei Paare kleiner roter Augen, sie blinzeln im Takt */
-        for (i = 0; i < 3; i++) {
-            float x = cx + (float)(i - 1) * 22.0f + 3.0f * fm_sinf(t * 0.7f + (float)i * 2.0f);
-            float y = cy + 14.0f + (float)(i == 1 ? -6 : 4) + 1.5f * fm_sinf(t * 1.3f + (float)i);
-            float bl = (beat > 0.8f && i == ((int)(t * 3.0f) % 3)) ? 0.1f : 1.0f;
-            eye_dot(x - 2.2f, y, 0.9f, rgb3(255, 40, 30), a * bl);
-            eye_dot(x + 2.2f, y, 0.9f, rgb3(255, 40, 30), a * bl);
-        }
-        break;
-    case PG_SETUP:                       /* eine Spinne: acht grüne Augen, Fäden im Dunkeln */
-        for (i = 0; i < 7; i++) {
-            float ang = (float)i * 0.9f;
-            s_line(cx, cy - 4.0f, cx + fm_cosf(ang) * 60.0f, cy - 4.0f - fm_sinf(ang) * 40.0f - 10.0f,
-                   rgb3(200, 200, 190), 0.10f * open);
-        }
-        eye_dot(cx - 3.2f, cy, 1.5f, rgb3(120, 255, 90), a);
-        eye_dot(cx + 3.2f, cy, 1.5f, rgb3(120, 255, 90), a);
-        for (i = 0; i < 6; i++) {
-            float x = cx + (float)(i - 2.5f) * 3.4f, y = cy - 4.5f - (float)((i == 0 || i == 5) ? 0 : (i == 1 || i == 4) ? 1.5f : 2.5f);
-            eye_dot(x, y, 0.7f, rgb3(150, 255, 110), a * 0.9f);
-        }
-        break;
-    case PG_DEEP:                        /* ein Betrachter: ein großes Auge, darüber kleine Augen auf Stielen */
-        {
-            float r = 6.5f * open + 0.01f, px = 1.2f * fm_sinf(t * 0.6f);
-            for (i = 0; i < 5; i++) {
-                float ang = (-0.9f + (float)i * 0.45f), sx = cx + fm_sinf(ang) * 13.0f, sy = cy - 6.0f - fm_cosf(ang) * 11.0f;
-                s_line(cx + fm_sinf(ang) * 6.0f, cy - fm_cosf(ang) * 6.0f, sx, sy, rgb3(70, 90, 60), 0.5f * open);
-                eye_dot(sx, sy, 0.8f, rgb3(220, 120, 255), a * 0.9f);
-            }
-            s_bloom(cx, cy, r * 3.0f, rgb3(200, 120, 255), 0.25f * a);
-            s_disc(cx, cy, r, rgb3(235, 225, 200), a);
-            s_disc(cx + px, cy, r * 0.62f, mix3(rgb3(150, 60, 220), rgb3(255, 60, 40), wr), a);
-            s_disc(cx + px, cy, r * 0.28f, rgb3(8, 4, 10), a);
-            s_disc(cx + px - r * 0.25f, cy - r * 0.3f, r * 0.12f, rgb3(255, 255, 255), 0.8f * a);
-        }
-        break;
-    case PG_FX:                          /* ein Geist: zwei blasse Augenhöhlen, Nebel um ihn, er schwebt */
-        {
-            float y = cy + 2.0f * fm_sinf(t * 1.1f);
-            s_bloom(cx, y + 8.0f, 26.0f, rgb3(150, 200, 255), 0.10f * open);
-            s_bloom(cx, y + 2.0f, 14.0f, rgb3(190, 225, 255), 0.12f * open);
-            for (i = -1; i <= 1; i += 2) {
-                s_disc(cx + (float)i * 5.0f, y, 2.4f, rgb3(10, 20, 40), 0.9f * open);
-                eye_dot(cx + (float)i * 5.0f, y, 1.0f, rgb3(170, 230, 255), a);
-            }
-            s_disc(cx, y + 7.0f, 1.8f, rgb3(10, 20, 40), 0.7f * open);   /* der Mund, ein dunkles Loch */
-        }
-        break;
-    default:
-        dragon(cx, cy, 1.0f, open, glow, wr, t, frozen);
-        break;
-    }
-}
-
 /* der Blick: das vorgerenderte Bild, das Licht flackert mit, FREEZE macht es eisig, WRATH rot; beim Raumwechsel
  * kurz dunkel (ein Schritt in den nächsten Raum) */
 static void view(uint32_t now)
 {
-    const uint16_t *src = ART_CORR[PAGE_PAL[ui.page]];
-    float t = (float)now * 0.001f, lvl = sat01(fk_level() * 2.5f), env = fk_env();
+    int sc = scene_now();
+    const uint8_t *src = ART_SCN[sc];
+    const uint16_t *pal = ART_SCN_PAL[sc];
+    float t = (float)now * 0.001f, lvl = sat01(fk_level() * 2.5f);
     float beat = set.grv.on && gr_running() ? sat01(1.0f - (float)(now - ui.beat_at) / 180.0f) : 0.0f;
     float fl = 0.93f + 0.05f * fm_sinf(t * 17.0f) + 0.03f * fm_sinf(t * 31.0f) + 0.10f * lvl + 0.10f * beat;
     float wr = (float)set.wrath / 127.0f, tr = 1.0f;
-    int frozen = fk_frozen(), i;
+    int frozen = fk_frozen();
     int32_t x, y, xa, xb, ya, yb;
     if (!vis(VX0 - 3, VY0 - 3, VX1 + 3, VY1 + 3))
         return;
@@ -1257,12 +1144,11 @@ static void view(uint32_t now)
     yb = VY1 < g_y1 ? VY1 : g_y1;
     {
         int32_t kq = (int32_t)(fl * tr * 256.0f), kr = (int32_t)((fl * tr) * (256.0f + 70.0f * wr)), kb = kq;
-        if (frozen)
-            kr = (int32_t)((float)kq * 0.75f);
+        frozen = 0;                      /* (FREEZE hat sein eigenes Bild: das Wasser) */
         for (y = ya; y < yb; y++) {
-            const uint16_t *row = src + (uint32_t)(y - VY0) * ART_VW;
+            const uint8_t *row = src + (uint32_t)(y - VY0) * ART_VW;
             for (x = xa; x < xb; x++) {
-                uint16_t c = row[x - VX0];
+                uint16_t c = pal[row[x - VX0]];
                 int32_t r = (int32_t)(c >> 11), g = (int32_t)((c >> 5) & 63u), b = (int32_t)(c & 31u);
                 if (frozen) {            /* eisig: zur Helligkeit hin, blau */
                     int32_t l = (r * 2 + g + b * 2) / 5;
@@ -1279,13 +1165,6 @@ static void view(uint32_t now)
                 cv_px[(uint32_t)(y + cv_oy) * cv_w + (uint32_t)(x - g_ox)] = swap16((uint16_t)(r << 11 | g << 5 | b));
             }
         }
-    }
-    if (tr > 0.05f) {
-        for (i = 0; i < 2; i++)
-            torch_flame((float)VX0 + ART_TORCH[i][0], (float)VY0 + ART_TORCH[i][1] - 6.0f, t + (float)i * 1.7f,
-                        lvl * tr, beat, frozen);
-        beast(ui.page, (float)VX0 + (float)ART_VW * 0.5f, (float)VY0 + 50.0f, tr,
-              sat01(env * 0.6f + lvl) * 0.8f + 0.5f * beat, wr, t, beat, frozen);
     }
     if (ui.vol) {                        /* VOL: zwei Säulen links und rechts im Bild */
         int c, clip = now < ui.clip_until;
@@ -1485,7 +1364,6 @@ static void message(uint32_t now)
         text_cat(l, ROOM_NAME[set.algo]);
         s_text(11.0f, MY0 + 4.0f, &FONT_XS, l, C_GOLD, 0);
         s_rtext(229.0f, MY0 + 4.0f, &FONT_XS, FK_ALGOS[set.algo].name, C_TXT_DIM, 0);
-        (void)PAGE_BEAST;
     }
     /* Zeile 2: der Regler, der gerade gedreht wird; Snapshots; WRATH */
     l[0] = 0;

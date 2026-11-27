@@ -12,8 +12,9 @@ further keys only change the root.
 ## The screen
 
 - **Top left:** the view down the corridor, like the dungeon games of the 90s; Every page has its own corridor and its own
-  monster lurking in the dark, so you always know where you are: PLAY red bricks and a dragon, GROOVE the crypt and
-  rats, SETUP sandstone and a spider, DEEP moss and an eye, FX blue stone and a ghost. Torches and eyes glow with the
+  monster lurking in the dark, so you always know where you are: PLAY an orc, GROOVE a skeleton, SETUP a slime, DEEP a
+  beholder, FX a crystal ball. WRATH past half brings the dragon in its lava cave, FREEZE the flooded room with the
+  tentacle beast, holding SAVE (snapshots) the treasure room. Torches and eyes glow with the
   sound, FREEZE turns it ice blue.
 - **Right:** the dome with the room's number (on the GROOVE pages the 16 steps), the page, HOLD, octave, battery.
 - **The four heroes:** knobs K1–K4, each with a fixed colour and weapon on every page: **red** K1, **orange** K2,

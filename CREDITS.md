@@ -2,7 +2,8 @@
 
 GARGOYLE by swtdr34mz. The sound core is the one of FIKH-S (also by swtdr34mz: its twenty-two algorithms, the
 processors, the ambient reverb), used here under four macros. The GROOVE (dsp/garg_groove.c), the screens, the
-corridors (rendered from code by tools/gen_art.py into art.h) and everything else are written for this project; all
+rooms of the dungeon (pictures by swtdr34mz, tools/art/scenes.png, cut and reduced to a palette by
+tools/gen_art.py into art.h) and everything else are written for this project; all
 sounds are synthesized in the firmware: no samples. The look is inspired by the dungeon games of the early 90s; no
 artwork, logo or name of any game is used.
 
