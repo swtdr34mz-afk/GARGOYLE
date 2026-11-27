@@ -133,8 +133,13 @@ wait 50
 expect wrath 64
 midi B0 4B 00
 midi 80 3C 00
+# SAVE while the drone (HOLD) sounds: no dip, it saves as soon as it is quiet
 tap SAVE
 wait 500
+expect dirty 1
+tap PLAY
+expect hold 0
+wait 5000
 expect dirty 0
 reboot
 wait 4500
