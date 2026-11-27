@@ -95,7 +95,7 @@ static int settings_migrate(const uint8_t *o, int got)
     r = o + 8;
     memcpy(set.p, r, sizeof set.p);
     r += sizeof set.p;
-    memcpy(set.g, r, (size_t)ng);
+    memcpy(set.g, r, (uint32_t)ng);
     r += ng;
     memcpy(&set.grv, r, sizeof set.grv);
     r += sizeof set.grv;
@@ -107,7 +107,7 @@ static int settings_migrate(const uint8_t *o, int got)
         set.snaps[i].oct = r[2];
         memcpy(set.snaps[i].p, r + 4, FK_NPA);
         memcpy(set.snaps[i].g, FK_GLOBAL_INIT, FK_NPG);
-        memcpy(set.snaps[i].g, r + 4 + FK_NPA, (size_t)ng);
+        memcpy(set.snaps[i].g, r + 4 + FK_NPA, (uint32_t)ng);
         if (q)
             set.snaps[i].p[P_QUEST] = 0;
     }
@@ -128,7 +128,7 @@ static void settings_load(void)
     if (settings_migrate(raw, got))
         got = (int)sizeof set;
     else if (got > 0)
-        memcpy(&set, raw, (size_t)got);
+        memcpy(&set, raw, (uint32_t)got);
     ok = got == (int)sizeof set && set.magic == SET_MAGIC && set.algo < FK_NALGO && set.oct <= 4u && set.hold <= 1u
          && set.snap <= NSNAP && set.grv.on <= 1u && set.grv.style < GR_NSTYLES && set.wrath <= 127u;
     for (i = 0; ok && i < NSNAP; i++)
