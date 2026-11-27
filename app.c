@@ -1431,7 +1431,7 @@ static void hero_icon(int k, float x, float y, int hot)
 }
 
 /* ein Held = ein Regler: Bild, Name, der Wert, der Balken in seiner Farbe (der helle Strich: der Sweetspot) */
-static void panel(int k, uint32_t now)
+static void hero_panel(int k, uint32_t now)
 {
     float x = panel_x(k), y = panel_y(k), bx0 = x + 40.0f, bx1 = x + 109.0f;
     int hot = ui.knob_at[k] && now - ui.knob_at[k] < 800u, v = *kval(ui.page, k);
@@ -1539,7 +1539,7 @@ static void scene(uint32_t now)
     dome(now);
     side(now);
     for (k = 0; k < 4; k++)
-        panel(k, now);
+        hero_panel(k, now);
     message(now);
 }
 
