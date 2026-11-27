@@ -22,7 +22,7 @@ factory sound.
 
 **WRATH (SELECT):** one macro over everything for live play, 4 a detent.
 
-**GROOVE:** HOME twice, REC on/off, ALGORITHM style: HEARTBEAT, FOOTSTEPS, DRIPS, CHAINS, WINGS, RITUAL, BELL, BONES,
+**GROOVE:** HOME twice, REC on/off, ALGORITHM style: HEARTBEAT, FOOTSTEPS, STONES, CHAINS, WINGS, RITUAL, BELL, BONES,
 RUMBLE, TORCH – chiptune sound effects (square, 4-bit triangle, noise register, 16 volume steps, 60 frames a second),
 tuned to the drone. DENSITY, BREATH, DISTANCE, TEMPO; SETUP: LEVEL, HUMAN, FOLLOW, TUNE. Follows a MIDI clock.
 

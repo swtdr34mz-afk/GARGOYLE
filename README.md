@@ -38,7 +38,7 @@ morph), THRONE OF BONES (octave arpeggio), PIT OF DOOM (divider logic), WIND OF 
 (random notes). No reverb: an echo that DECAY turns into a fog. Every sound fades in slowly from the factory, WANDER makes it drift.
 
 **GROOVE:** ten styles of dungeon noises as the old consoles made them (square, 4-bit triangle, the noise register,
-16 volume steps, 60 frames a second, 6 bits): HEARTBEAT, FOOTSTEPS, DRIPS, CHAINS, WINGS, RITUAL, BELL, BONES, RUMBLE,
+16 volume steps, 60 frames a second, 6 bits): HEARTBEAT, FOOTSTEPS, STONES, CHAINS, WINGS, RITUAL, BELL, BONES, RUMBLE,
 TORCH, tuned to the drone, with a pump (BREATH).
 
 ## Building

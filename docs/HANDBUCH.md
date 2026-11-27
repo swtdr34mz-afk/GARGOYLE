@@ -86,7 +86,7 @@ weg, alles wird älter und schneller. 4 Schritte pro Raste; ab der Hälfte ersch
 
 ## Der GROOVE
 
-HOME zweimal, REC schaltet an und aus, ALGORITHM wählt den Style: HEARTBEAT, FOOTSTEPS, DRIPS, CHAINS, WINGS, RITUAL,
+HOME zweimal, REC schaltet an und aus, ALGORITHM wählt den Style: HEARTBEAT, FOOTSTEPS, STONES, CHAINS, WINGS, RITUAL,
 BELL, BONES, RUMBLE, TORCH. Die Geräusche klingen wie die Soundeffekte alter Konsolen und DOS-Spiele: Rechteck,
 4-Bit-Dreieck, das Rausch-Register, Lautstärke in 16 Stufen, 60 Änderungen pro Sekunde, 6 Bit am Ende. Alle sind auf
 den Grundton gestimmt. DENSITY, BREATH (der Drone pumpt mit), DISTANCE (weit weg im Echo), TEMPO; im SETUP LEVEL,
