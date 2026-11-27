@@ -117,6 +117,7 @@ static struct {
     float om_ph, om_v, om_sh, om_out;         /* OMEN: Phase, Wert, CHANCE gehalten, Ausgang (mal POWER) */
     float om_vol0;                            /* die Lautstärke am Ende des letzten Blocks (gleitend) */
     float om_f0, olp[2][2];                   /* der Tiefpass von OMEN */
+    float qpk;                                /* BITS: der Spitzenpegel */
     float om_pitch, om_torch, om_rune, om_curse, om_alch, om_vol, om_aura, om_lofi;
     int om_step, om_bar;
     float msm[4];
@@ -1008,9 +1009,14 @@ void fk_render(float *l, float *r, int n)
             }
             a *= E.env * E.vel * E.xf;
             b *= E.env * E.vel * E.xf;
-            if (bits < 15.5f) {
-                a = (float)(int)(a * steps + (a < 0.0f ? -0.5f : 0.5f)) / steps;
-                b = (float)(int)(b * steps + (b < 0.0f ? -0.5f : 0.5f)) / steps;
+            {   /* BITS: auf den Pegel bezogen, wie ein Wandler, der voll ausgesteuert ist (leise Töne verschwinden nicht) */
+                float pk = absf(a) > absf(b) ? absf(a) : absf(b);
+                E.qpk = pk > E.qpk ? pk : E.qpk * 0.99995f;
+                if (bits < 15.5f && E.qpk > 1e-5f) {
+                    float g = 0.9f / E.qpk, sg = steps * g;
+                    a = (float)(int)(a * sg + (a < 0.0f ? -0.5f : 0.5f)) / sg;
+                    b = (float)(int)(b * sg + (b < 0.0f ? -0.5f : 0.5f)) / sg;
+                }
             }
             gl[i] = a;
             gr[i] = b;

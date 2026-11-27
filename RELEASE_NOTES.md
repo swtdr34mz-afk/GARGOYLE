@@ -5,5 +5,6 @@
 - TIDE is replaced by **RUNE**: wave, pulse width, table and ALCHEMY wander (PWM and friends)
 - HAUNT: a real vibrato (up to ±60 cents), a little darker in the dip
 - CURSE stays as it was (the jumps like an arpeggio)
+- BITS fixed: at very few bits quiet sounds no longer vanish into silence, they crunch like a fully driven 8-bit converter
 
 Install: download the .fwsc below and flash it with the M-Flasher. Your sounds and snapshots stay.
