@@ -1,0 +1,61 @@
+# GARGOYLE: OMEN, the LFO on LFO (RATE, SHAPE, POWER, PATH); free and with the GROOVE
+wait 4500
+tap PLAY
+key 0 down 100
+wait 100
+key 0 up
+tap LFO
+expect page 7
+# POWER up, PATH BREATH, SINE, about 1 Hz
+turn K3 80 5
+wait 300
+turn K1 9 200
+wait 2000
+wav o_breath.wav
+wait 4000
+wavstop
+shot omen_breath.png
+# SHAPE: one step per detent
+turn K2 3
+wait 100
+expect p23 74
+wav o_square.wav
+wait 3000
+wavstop
+# PATH: one step per detent: FLAME, ... STORM
+turn K4 1
+wait 100
+expect p25 24
+wav o_flame.wav
+wait 3000
+wavstop
+turn K4 5
+wait 100
+expect p25 104
+turn K4 1
+wait 100
+expect p25 120
+wav o_storm.wav
+wait 3000
+wavstop
+shot omen_storm.png
+# with the GROOVE: RATE in note values
+tap HOME
+tap HOME
+tap REC
+wait 300
+expect grv_on 1
+tap LFO
+turn K1 -127 5
+wait 100
+expect p22 8
+turn K1 4
+wait 100
+expect p22 72
+wav o_sync.wav
+wait 4000
+wavstop
+shot omen_sync.png
+# SPELL on GLO
+tap GLO
+expect page 6

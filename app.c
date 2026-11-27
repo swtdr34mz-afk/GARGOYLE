@@ -12,7 +12,8 @@
  *   FX         ECHO:   ECHO, HAUNT, DECAY, DEPTH (das 8-Bit-Echo)
  *   ENV        RITUAL: TORCH, PORTAL, AWAKEN, SLUMBER
  *   EDIT       LORE:   CREEP, WANDER, BITS, VOLUME
- *   LFO        SPELL:  AGE, AURA (der Resonator: aus Chip-Tönen wird eine Fläche), SPEED, WIDTH (für alle gleich)
+ *   GLO        SPELL:  AGE, AURA (der Resonator: aus Chip-Tönen wird eine Fläche), SPEED, WIDTH (für alle gleich)
+ *   LFO        OMEN:   RATE, SHAPE, POWER, PATH – ein LFO auf mehrere Ziele, im Takt des GROOVE (für alle gleich)
  *   SELECT     WRATH: ein Makro über allem, für live, 4 je Raste
  *   PRESET     der Algorithmus (16, in zwei Bänken)
  *   ALGORITHM  QUEST = MORPH in den nächsten Algorithmus; auf den GROOVE-Seiten: der Style
@@ -20,7 +21,6 @@
  *   REC        FATE: würfeln (FATE neu, damit auch die Varianten; 1 s: dazu RUNE und ALCHEMY); auf den GROOVE-Seiten: GROOVE an / aus
  *   ARP        FREEZE: das Echo hält, was es hat
  *   SEQ        1 s halten: der Algorithmus zurück auf seinen Werksklang
- *   GLO        VOL: die Pegel im Bild
  *   SAVE       speichern (sonst von selbst, wenn es still ist); SAVE + eine der ersten 8 weißen Tasten: ein Snapshot,
  *              SEL + die Taste: zurückgeholt
  *   MIDI       Noten (alle Kanäle), Pitch Bend ±2, CC 1 RUNE, CC 70..73 CURSE HORDE RUNE ALCHEMY, CC 75 WRATH,
@@ -38,8 +38,9 @@ static float mem_df[FK_DF_N] __attribute__((section(".pool")));
 static float mem_res[FK_NRES][FK_RS_N] __attribute__((section(".pool")));
 
 /* ------------------------------------------------------------- Speicher --- */
-#define SET_MAGIC 0x35475247u            /* "GRG5": QUEST ist der MORPH */
+#define SET_MAGIC 0x36475247u            /* "GRG6": mit OMEN */
 #define SET_MAGIC4 0x34475247u           /* "GRG4" (v0.1.0): wird übernommen, QUEST auf 0 */
+#define SET_MAGIC5 0x35475247u           /* "GRG5" (v0.1.1): wird übernommen */
 #define NSNAP 8
 typedef struct {
     uint8_t used, algo, oct, rsv;
@@ -75,15 +76,52 @@ static void settings_defaults(void)
         set.grv.p[a] = GR_INIT[a];
 }
 
+/* v0.1.0 (GRG4) und v0.1.1 (GRG5): SPELL hatte nur 4 globale Regler, noch kein OMEN; in v0.1.0 war QUEST die Variante */
+#define NG4 4
+typedef struct {
+    uint8_t used, algo, oct, rsv;
+    uint8_t p[FK_NPA];
+    uint8_t g[NG4];
+} snap4_t;
+typedef struct {
+    uint32_t magic;
+    uint8_t algo, oct, hold, snap;
+    uint8_t p[FK_NALGO][FK_NPA];
+    uint8_t g[NG4];
+    gr_set grv;
+    uint8_t wrath, rsv;
+    snap4_t snaps[NSNAP];
+} settings4_t;
+
 static void settings_load(void)
 {
     int a, i, got = plat_store_load(OBJ_SETTINGS, &set, sizeof set), ok;
-    if (got == (int)sizeof set && set.magic == SET_MAGIC4) {   /* v0.1.0: QUEST war die Variante, jetzt der MORPH */
-        set.magic = SET_MAGIC;
-        for (a = 0; a < FK_NALGO; a++)
+    if (got == (int)sizeof(settings4_t) && (set.magic == SET_MAGIC4 || set.magic == SET_MAGIC5)) {   /* übernehmen */
+        static settings4_t o;
+        int old = set.magic == SET_MAGIC4;
+        memcpy(&o, &set, sizeof o);
+        settings_defaults();
+        set.algo = o.algo;
+        set.oct = o.oct;
+        set.hold = o.hold;
+        set.snap = o.snap;
+        memcpy(set.p, o.p, sizeof o.p);
+        memcpy(set.g, o.g, NG4);
+        set.grv = o.grv;
+        set.wrath = o.wrath;
+        for (i = 0; i < NSNAP; i++) {
+            set.snaps[i].used = o.snaps[i].used;
+            set.snaps[i].algo = o.snaps[i].algo;
+            set.snaps[i].oct = o.snaps[i].oct;
+            memcpy(set.snaps[i].p, o.snaps[i].p, FK_NPA);
+            memcpy(set.snaps[i].g, o.snaps[i].g, NG4);
+            memcpy(set.snaps[i].g + NG4, FK_GLOBAL_INIT + NG4, FK_NPG - NG4);
+            if (old)
+                set.snaps[i].p[P_QUEST] = 0;
+        }
+        for (a = 0; old && a < FK_NALGO; a++)
             set.p[a][P_QUEST] = 0;
-        for (i = 0; i < NSNAP; i++)
-            set.snaps[i].p[P_QUEST] = 0;
+        got = (int)sizeof set;
     }
     ok = got == (int)sizeof set && set.magic == SET_MAGIC && set.algo < FK_NALGO && set.oct <= 4u && set.hold <= 1u
          && set.snap <= NSNAP && set.grv.on <= 1u && set.grv.style < GR_NSTYLES && set.wrath <= 127u;
@@ -172,11 +210,11 @@ static void e_off(int note)
 }
 
 /* ------------------------------------------------------------------ Seiten --- */
-enum { PG_SUMMON, PG_GROOVE, PG_SETUP, PG_ECHO, PG_RITUAL, PG_LORE, PG_SPELL, NPAGES };
-static const char *const PAGE_NAME[NPAGES] = {"SUMMON", "GROOVE", "SETUP", "ECHO", "RITUAL", "LORE", "SPELL"};
+enum { PG_SUMMON, PG_GROOVE, PG_SETUP, PG_ECHO, PG_RITUAL, PG_LORE, PG_SPELL, PG_OMEN, NPAGES };
+static const char *const PAGE_NAME[NPAGES] = {"SUMMON", "GROOVE", "SETUP", "ECHO", "RITUAL", "LORE", "SPELL", "OMEN"};
 /* was ein Regler ist: ein Parameter der Engine (SRC_P) oder einer des GROOVE (SRC_G) */
 enum { SRC_P, SRC_G };
-static const uint8_t PAGE_SRC[NPAGES] = {SRC_P, SRC_G, SRC_G, SRC_P, SRC_P, SRC_P, SRC_P};
+static const uint8_t PAGE_SRC[NPAGES] = {SRC_P, SRC_G, SRC_G, SRC_P, SRC_P, SRC_P, SRC_P, SRC_P};
 static const uint8_t PAGE_IDX[NPAGES][4] = {
     {P_CURSE, P_HORDE, P_RUNE, P_ALCHEMY},
     {GR_DENS, GR_BREATH, GR_DIST, GR_TEMPO},
@@ -185,6 +223,7 @@ static const uint8_t PAGE_IDX[NPAGES][4] = {
     {P_TORCH, P_PORTAL, P_AWAKEN, P_SLUMBER},
     {P_CREEP, P_WANDER, P_BITS, P_VOLUME},
     {P_AGE, P_AURA, P_SPEED, P_WIDTH},
+    {P_RATE, P_SHAPE, P_POWER, P_PATH},
 };
 
 static uint8_t *pval(int p) { return p >= FK_NPA ? &set.g[p - FK_NPA] : &set.p[set.algo][p]; }
@@ -213,9 +252,6 @@ static struct {
     uint32_t knob_at[4];                 /* wann jeder Regler zuletzt gedreht wurde (er leuchtet) */
     uint8_t rest[4];                     /* Rasten in der Mitte (Sweetspot) */
     uint8_t snap_used;                   /* SEL / SAVE gehalten: eine Taste wurde benutzt */
-    uint8_t vol;                         /* VOL: die Pegel im Bild */
-    uint32_t clip_until;
-    float mt[2];
     int read_k;                          /* der Regler in der Anzeige (-1: keiner) */
     uint32_t read_until;
     char msg[2][24];
@@ -358,13 +394,20 @@ static void knob_changed(int k)
     say_knob(k);
 }
 
+/* OMEN läuft im Takt, wenn der GROOVE läuft */
+static int fk_synced_ui(void) { return set.grv.on && gr_running(); }
+
 static void knob_turn(int k, int32_t e)
 {
     uint8_t *p = kval(ui.page, k);
     int v = *p, nv, src = PAGE_SRC[ui.page], idx = PAGE_IDX[ui.page][k];
     ui.knob_at[k] = plat_ms();
     ui.redraw |= (uint32_t)R_ROW0 << k;
-    if (src == SRC_G && idx == GR_FOLLOW) {          /* FOLLOW: an / aus */
+    if (src == SRC_P && (idx == P_SHAPE || idx == P_PATH || (idx == P_RATE && fk_synced_ui()))) {
+        /* OMEN: SHAPE, PATH und RATE im Takt springen je Raste eine Stufe weiter (auf die Mitte der Stufe) */
+        int nz = idx == P_SHAPE ? FK_NSHAPE : 8, z = iclamp((v * nz >> 7) + (e > 0 ? 1 : -1), 0, nz - 1);
+        nv = (z * 128 + 64) / nz;
+    } else if (src == SRC_G && idx == GR_FOLLOW) {          /* FOLLOW: an / aus */
         nv = e > 0 ? 127 : 0;
     } else if (src == SRC_G && idx == GR_TUNE) {     /* TUNE: Halbtöne, ±12 */
         nv = iclamp(v + (e > 0 ? 1 : -1), 52, 76);
@@ -600,7 +643,8 @@ static void button(uint32_t i)
     case B_FX: page_set(PG_ECHO); break;
     case B_ENV: page_set(PG_RITUAL); break;
     case B_EDIT: page_set(PG_LORE); break;
-    case B_LFO: page_set(PG_SPELL); break;
+    case B_GLO: page_set(PG_SPELL); break;
+    case B_LFO: page_set(PG_OMEN); break;
     case B_PLAY: hold_set(!set.hold); break;
     case B_REC: ui.rec_t = plat_ms(); break;
     case B_SEQ: ui.seq_t = plat_ms(); break;
@@ -630,11 +674,6 @@ static void button(uint32_t i)
         ui.redraw |= R_FOOT;
         break;
     }
-    case B_GLO:                          /* VOL: die Pegel im Bild */
-        ui.vol = (uint8_t)!ui.vol;
-        ui.redraw |= R_MAP;
-        app_say("VOL", ui.vol ? "OUT L / R" : "OFF");
-        break;
     default: break;
     }
 }
@@ -735,7 +774,7 @@ static void lights(void)
 {
     uint32_t now = plat_ms(), btn = 0, dimb = (1u << NB) - 1u, lit = 0, k;
     {
-        static const uint8_t PB[NPAGES] = {B_HOME, B_HOME, B_HOME, B_FX, B_ENV, B_EDIT, B_LFO};
+        static const uint8_t PB[NPAGES] = {B_HOME, B_HOME, B_HOME, B_FX, B_ENV, B_EDIT, B_GLO, B_LFO};
         btn |= 1u << PB[ui.page];
     }
     if (set.grv.on && gr_running() && now - ui.beat_at < 90u)   /* GROOVE: HOME blitzt mit jedem Schlag */
@@ -746,8 +785,6 @@ static void lights(void)
         btn |= 1u << B_ARP;
     if (set_dirty)
         btn |= 1u << B_SAVE;
-    if (ui.vol)
-        btn |= 1u << B_GLO;
     if (now - ui.dice_at < 160u || (groove_page() && set.grv.on))
         btn |= 1u << B_REC;
     if (set.oct != 2)
@@ -798,10 +835,12 @@ static void lights(void)
 static const col3 HERO[4] = {{226, 70, 52}, {236, 150, 44}, {96, 196, 96}, {96, 150, 240}};
 static const char *const HERO_CLASS[4] = {"FIGHTER", "DWARF", "ELF", "MAGE"};
 /* jede Seite ihr eigener Raum mit ihrem eigenen Monster (so merkt man sich, wo man ist); die Bilder: art.h
- * SUMMON Ork, GROOVE Skelett, SETUP Schatz, ECHO Kristallkugel, RITUAL Schleim, LORE Betrachter, SPELL Wasser;
+ * SUMMON Ork, GROOVE Skelett, SETUP Schatz, ECHO Kristallkugel, RITUAL Schleim, LORE Betrachter, SPELL Wasser,
+ * OMEN die Kristallkugel in Violett, sie pulsiert mit dem LFO;
  * WRATH ab der Hälfte: der Drache; FREEZE: alles eisblau; SAVE gehalten (Snapshots): der Schatz */
 enum { SC_ORC, SC_DRAGON, SC_ORB, SC_SKELETON, SC_SLIME, SC_BEHOLDER, SC_TREASURE, SC_WATER };
-static const uint8_t PAGE_SCENE[NPAGES] = {SC_ORC, SC_SKELETON, SC_TREASURE, SC_ORB, SC_SLIME, SC_BEHOLDER, SC_WATER};
+static const uint8_t PAGE_SCENE[NPAGES] = {SC_ORC, SC_SKELETON, SC_TREASURE, SC_ORB, SC_SLIME, SC_BEHOLDER, SC_WATER,
+                                           SC_ORB};
 static int snap_mode(void);
 static int scene_now(void)
 {
@@ -1013,7 +1052,10 @@ static void view(uint32_t now)
     float beat = set.grv.on && gr_running() ? sat01(1.0f - (float)(now - ui.beat_at) / 180.0f) : 0.0f;
     float fl = 0.93f + 0.05f * fm_sinf(t * 17.0f) + 0.03f * fm_sinf(t * 31.0f) + 0.10f * lvl + 0.10f * beat;
     float wr = (float)set.wrath / 127.0f, tr = 1.0f;
-    int frozen = fk_frozen();
+    int frozen = fk_frozen(), omen = scene_now() == SC_ORB && ui.page == PG_OMEN;
+    float om = omen ? fk_omen() : 0.0f;
+    if (omen)                            /* OMEN: die Kugel pulsiert mit dem LFO */
+        fl *= 0.85f + 0.35f * (0.5f + 0.5f * om);
     int32_t x, y, xa, xb, ya, yb;
     if (!vis(VX0 - 3, VY0 - 3, VX1 + 3, VY1 + 3))
         return;
@@ -1041,6 +1083,12 @@ static void view(uint32_t now)
                     g = (g + l * 2) / 2;
                     b = (b + l * 3) / 2;
                 }
+                if (omen) {              /* OMEN: violett */
+                    int32_t l = (r * 2 + g + b * 2) / 5;
+                    r = (r + l) * 5 / 8;
+                    g = (g + l) * 3 / 8;
+                    b = (b * 3 + l * 2) / 4;
+                }
                 r = (r * kr) >> 8;
                 g = (g * (frozen ? kq : (int32_t)((float)kq * (1.0f - 0.25f * wr)))) >> 8;
                 b = (b * (frozen ? (kb * 5) / 4 : (int32_t)((float)kb * (1.0f - 0.3f * wr)))) >> 8;
@@ -1049,14 +1097,6 @@ static void view(uint32_t now)
                 b = b > 31 ? 31 : b;
                 cv_px[(uint32_t)(y + cv_oy) * cv_w + (uint32_t)(x - g_ox)] = swap16((uint16_t)(r << 11 | g << 5 | b));
             }
-        }
-    }
-    if (ui.vol) {                        /* VOL: zwei Säulen links und rechts im Bild */
-        int c, clip = now < ui.clip_until;
-        for (c = 0; c < 2; c++) {
-            float x0 = c ? (float)VX1 - 10.0f : (float)VX0 + 4.0f, h = 80.0f * ui.mt[c];
-            s_rect(x0, (float)VY0 + 14.0f, 6.0f, 80.0f, rgb3(10, 8, 12), 0.85f);
-            s_rect(x0, (float)VY0 + 94.0f - h, 6.0f, h, clip ? rgb3(255, 60, 40) : rgb3(90, 200, 90), 0.95f);
         }
     }
     /* der Rahmen um den Blick: eingelassen */
@@ -1542,6 +1582,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     midi_in();
     gr_render(dl, dr, wl, wr, dk, (int)n, fk_pitch());
     fk_ext(dk, wl, wr, gr_send());
+    fk_sync(set.grv.on && gr_running() ? gr_tempo() : 0.0f);   /* OMEN im Takt des GROOVE */
     fk_render(bl, br, (int)n);
     w = scope_w;
     for (i = 0; i < n; i++) {
@@ -1610,16 +1651,6 @@ void app_frame(void)
         }
         if (set.grv.on && !(ui.frame % 3u) && (ui.page == PG_GROOVE || ui.page == PG_SETUP || gr_step() >= 0))
             ui.redraw |= R_HEAD;
-    }
-    if (ui.vol && !(ui.frame % 3u)) {    /* VOL: die Pegel, in dB (-48 .. 0) */
-        int c;
-        for (c = 0; c < 2; c++) {
-            float pk = fk_meter(c), db = pk > 1e-5f ? 6.0206f * fm_log2f(pk) : -96.0f;
-            ui.mt[c] = (db + 48.0f) / 48.0f;
-            ui.mt[c] = ui.mt[c] < 0.0f ? 0.0f : ui.mt[c] > 1.0f ? 1.0f : ui.mt[c];
-        }
-        if (fk_clipped())
-            ui.clip_until = now + 600u;
     }
     if (!(ui.frame % 4u) || now - ui.trans_at < 450u)   /* der Blick lebt: Fackeln, Augen, Glut */
         ui.redraw |= R_MAP;

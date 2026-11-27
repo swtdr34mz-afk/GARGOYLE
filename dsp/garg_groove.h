@@ -38,3 +38,4 @@ float gr_env(void);                      /* der Ausgang des GROOVE, geglättet (
 float gr_pump(void);                     /* wie tief der Drone gerade weggedrückt ist (0..1) */
 int gr_synced(void);                     /* 1: die MIDI-Clock führt */
 int gr_bpm(int v);                       /* TEMPO als BPM */
+float gr_tempo(void);                    /* das Tempo gerade: die MIDI-Clock oder TEMPO */

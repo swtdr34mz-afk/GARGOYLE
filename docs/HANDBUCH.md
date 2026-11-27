@@ -33,7 +33,8 @@ ein Knopf überspringt das. Nach dem Start ist es still (HOLD aus): PLAY schalte
 | FX | ECHO | ECHO | HAUNT | DECAY | DEPTH |
 | ENV | RITUAL | TORCH | PORTAL | AWAKEN | SLUMBER |
 | EDIT | LORE | CREEP | WANDER | BITS | VOLUME |
-| LFO | SPELL | AGE | AURA | SPEED | WIDTH |
+| GLO | SPELL | AGE | AURA | SPEED | WIDTH |
+| LFO | OMEN | RATE | SHAPE | POWER | PATH |
 
 - **CURSE** (Mitte neutral): Kreuzmodulation – links Ringmodulation, rechts Sync oder FM (je Algorithmus).
 - **HORDE** (Mitte neutral): die Stimmen – links kommen Oktaven darunter dazu, rechts werden sie verstimmt.
@@ -52,6 +53,14 @@ ein Knopf überspringt das. Nach dem Start ist es still (HOLD aus): PLAY schalte
   schwebenden Fläche – der Schlüssel zum Drone), **SPEED** (
   Arpeggios und Muster, 1–60 Hz – die Bildrate der alten Spiele ist 50/60), **WIDTH**. Die SPELL-Seite gilt für alle
   Algorithmen gleich.
+- **OMEN**, der LFO – eine Welle, die mehrere Regler zugleich bewegt (für alle Algorithmen gleich): **RATE** (frei von
+  einer Welle pro Minute bis 20 Hz; läuft der GROOVE, in Notenwerten: 4 Takte bis 1/32, an jedem Takt ausgerichtet,
+  auch mit MIDI-Clock), **SHAPE** (SINE, TRIANGLE, SAW, SQUARE, STAIRS – das Dreieck in 8 Stufen wie im Chip –,
+  CHANCE – je Welle ein Zufallswert), **POWER** (wie stark; ganz links aus), **PATH** (wohin): BREATH (Lautstärke und
+  Filter atmen), FLAME (Filter und Klangfarbe flackern), HAUNT (die Tonhöhe schwankt, der Klang geistert durchs
+  Stereo), AURA (der Resonator schwillt), TIDE (Ebbe und Flut im Stereo), CURSE (Ring / Sync pumpen), DECAY (Bits
+  und Abtastrate zerfallen im Takt), STORM (alles). SHAPE und PATH springen je Raste eine Stufe. Die Kristallkugel
+  im Bild pulsiert mit.
 
 Bipolare Regler rasten in der Mitte zwei Rasten lang ein.
 
@@ -96,7 +105,7 @@ HUMAN, FOLLOW, TUNE. Eine MIDI-Clock übernimmt das Tempo.
 
 ## Weitere Tasten
 
-PLAY: HOLD. ARP: FREEZE (das Echo hält). GLO: VOL. SAVE: speichern. Snapshots: SAVE halten + eine der ersten acht weißen
+PLAY: HOLD. ARP: FREEZE (das Echo hält). SAVE: speichern. Snapshots: SAVE halten + eine der ersten acht weißen
 Tasten legt den Klang ab, SEL halten + die Taste holt ihn zurück.
 
 ## MIDI

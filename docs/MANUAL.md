@@ -11,9 +11,11 @@ knobs are four heroes with fixed colours.
 **Pages (one knob, one parameter):** HOME SUMMON: CURSE (left ring, right sync/FM), HORDE (left octaves, right detune),
 RUNE (wave, duty, table), ALCHEMY (per algorithm, shown when turned). HOME 2×/3×: GROOVE and SETUP. FX ECHO: ECHO, HAUNT
 (feedback, left ping-pong), DECAY (duller, grainier repeats), DEPTH. ENV RITUAL: TORCH (left low pass, right high
-pass), PORTAL (a detent a semitone, ±24), AWAKEN, SLUMBER. EDIT LORE: CREEP, WANDER, BITS (16 .. 1), VOLUME. LFO
+pass), PORTAL (a detent a semitone, ±24), AWAKEN, SLUMBER. EDIT LORE: CREEP, WANDER, BITS (16 .. 1), VOLUME. GLO
 SPELL (all algorithms): AGE (sample rate down to 2 kHz), AURA (a resonator on root, fifth and octaves: the chip tones ring on into a drone), SPEED (1–60 Hz:
-arpeggios, patterns), WIDTH.
+arpeggios, patterns), WIDTH. LFO OMEN, an LFO on several targets at once: RATE (free, or note values 4 bars .. 1/32
+when the GROOVE runs, also with MIDI clock), SHAPE (sine, triangle, saw, square, stairs, chance), POWER, PATH (BREATH,
+FLAME, HAUNT, AURA, TIDE, CURSE, DECAY, STORM).
 
 **Algorithms (PRESET):** 1 TORCHLIGHT, 2 CRYPT CHOIR, 3 GOBLIN CHORDS, 4 DRAGON BREATH, 5 PC SPEAKER, 6 POKEY CURSE,
 7 SID RITUAL, 8 ADLIB HALL, 9 BEHOLDER, 10 TREASURE, 11 SKELETON MARCH, 12 MAGE TOWER, 13 THRONE OF BONES, 14 PIT OF
@@ -26,5 +28,5 @@ factory sound.
 RUMBLE, TORCH – chiptune sound effects (square, 4-bit triangle, noise register, 16 volume steps, 60 frames a second),
 tuned to the drone. DENSITY, BREATH, DISTANCE, TEMPO; SETUP: LEVEL, HUMAN, FOLLOW, TUNE. Follows a MIDI clock.
 
-**More:** PLAY HOLD, ARP FREEZE, GLO VOL, SAVE, snapshots (SAVE / SEL + one of the first eight white keys). MIDI: notes,
+**More:** PLAY HOLD, ARP FREEZE, SAVE, snapshots (SAVE / SEL + one of the first eight white keys). MIDI: notes,
 pitch bend ±2, CC 1 RUNE, CC 70–73 CURSE HORDE RUNE ALCHEMY, CC 75 WRATH, clock / start / stop.

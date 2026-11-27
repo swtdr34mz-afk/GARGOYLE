@@ -4,6 +4,7 @@
  * eingebunden. Alle Klänge hier synthetisiert, nach den Prinzipien der alten Chips (keine Kopie eines Chips). */
 #include "chip_core.h"
 #include "fastmath.h"
+#include "garg_groove.h"
 
 #define TAU 6.2831853f
 static inline float clampf(float x, float lo, float hi) { return x < lo ? lo : x > hi ? hi : x; }
@@ -113,6 +114,10 @@ static struct {
     float wow;
     uint8_t wt[4][32];                        /* die Tabellen (FATE würfelt sie) */
     uint8_t mraw[4];                          /* MORPH: CURSE, HORDE, RUNE, ALCHEMY des nächsten Algorithmus */
+    float om_ph, om_v, om_sh, om_out;         /* OMEN: Phase, Wert, CHANCE gehalten, Ausgang (mal POWER) */
+    float om_vol0, om_pan0;                   /* Lautstärke und Pan am Ende des letzten Blocks (gleitend) */
+    float om_pitch, om_torch, om_rune, om_curse, om_vol, om_pan, om_aura, om_lofi;
+    int om_step, om_bar;
     float msm[4];
     int last_fate, last_quest;
     float vib_ph;
@@ -188,6 +193,7 @@ void fk_init(const fk_mem *m)
     E.rng = 0x1234567u;
     E.last_fate = -1;
     E.duck_g = 1.0f;
+    E.om_vol = E.om_vol0 = 1.0f;
     reseed(0);
 }
 void fk_algo(int a)
@@ -204,6 +210,8 @@ void fk_morph(const uint8_t p4[4])
     for (i = 0; i < 4; i++)
         E.mraw[i] = p4[i];
 }
+void fk_sync(float bpm) { omen_sync_bpm = bpm; }
+float fk_omen(void) { return E.om_out; }
 void fk_params(const uint8_t p[FK_NP])
 {
     int i;
@@ -827,6 +835,65 @@ void fk_render(float *l, float *r, int n)
     /* die Varianten (Welle, Akkord, Tonleiter) würfelt FATE; QUEST ist der MORPH */
     k.q = ((float)(E.raw[P_FATE] & 7u) + 0.5f) * 0.125f;
     k.sp = 1.0f + E.sm[P_SPEED] * 59.0f;      /* 1 .. 60 Hz: die Bildrate der alten Spiele ist 50 / 60 */
+    /* OMEN: ein LFO, der mehrere Ziele zugleich bewegt (PATH); frei oder im Takt des GROOVE (an jedem Takt ausgerichtet) */
+    {
+        static const float PW[FK_NPATH][8] = {
+            /* Tonhöhe (Cent), TORCH (Oktaven), RUNE, CURSE, Lautstärke, Pan, AURA, Lo-Fi */
+            {0, 1.5f, 0, 0, 0.7f, 0, 0, 0},           /* BREATH: Lautstärke und Filter atmen */
+            {0, 2.5f, 0.35f, 0, 0, 0, 0, 0},          /* FLAME: Filter und Klangfarbe flackern */
+            {35, 0, 0, 0, 0, 0.5f, 0, 0},             /* HAUNT: die Tonhöhe schwankt, der Klang geistert hin und her */
+            {0, 0, 0.2f, 0, 0, 0, 0.55f, 0},          /* AURA: der Resonator schwillt */
+            {0, 0, 0, 0, 0.4f, 0.9f, 0, 0},           /* TIDE: Ebbe und Flut im Stereo */
+            {0, 0, 0.3f, 0.8f, 0, 0, 0, 0},           /* CURSE: Ring / Sync / Verzerrung pumpen */
+            {0, 0, 0, 0, 0, 0, 0, 1.0f},              /* DECAY: Bits und Abtastrate zerfallen im Takt */
+            {15, 1.5f, 0.3f, 0.3f, 0.3f, 0.5f, 0.3f, 0.3f}};   /* STORM: alles */
+        int rv = E.raw[P_RATE], sh = (E.raw[P_SHAPE] * FK_NSHAPE) >> 7, pa = (E.raw[P_PATH] * FK_NPATH) >> 7;
+        float pw = E.sm[P_POWER], ph0 = E.om_ph, x, d;
+        const float *w = PW[pa];
+        if (omen_sync_bpm > 0.0f) {
+            float cpb = OMEN_CPB[(rv * 8) >> 7];
+            int st = gr_step();
+            E.om_ph = wrap1(E.om_ph + cpb * omen_sync_bpm * (1.0f / 240.0f) * (float)n / FK_SR);
+            if (st == 0 && E.om_step != 0) {  /* ein neuer Takt: die Phase genau dorthin, wo sie hingehört */
+                E.om_bar++;
+                E.om_ph = wrap1((float)E.om_bar * cpb);
+            }
+            E.om_step = st;
+        } else {
+            E.om_ph = wrap1(E.om_ph + omen_hz(rv) * (float)n / FK_SR);
+        }
+        x = E.om_ph;
+        switch (sh) {
+        case 0: x = -fk_sin(x); break;                              /* SINE */
+        case 1: x = x < 0.5f ? 4.0f * x - 1.0f : 3.0f - 4.0f * x; break;   /* TRIANGLE */
+        case 2: x = 1.0f - 2.0f * x; break;                         /* SAW (fällt) */
+        case 3: x = x < 0.5f ? 1.0f : -1.0f; break;                 /* SQUARE */
+        case 4: x = x < 0.5f ? 4.0f * x - 1.0f : 3.0f - 4.0f * x;    /* STAIRS: das Dreieck in 8 Stufen, wie im Chip */
+            x = (float)(int)((x + 1.0f) * 3.999f) * (2.0f / 7.0f) - 1.0f; break;
+        default:                                                    /* CHANCE: je Welle ein neuer Zufallswert */
+            if (E.om_ph < ph0)
+                E.om_sh = rng_f(&E.rng) * 2.0f - 1.0f;
+            x = E.om_sh;
+            break;
+        }
+        if (sh == 3 || sh == 5)                                     /* Sprünge: ganz kurz geglättet, kein Klicken */
+            E.om_v += (x - E.om_v) * clampf((float)n / (FK_SR * 0.004f), 0.0f, 1.0f);
+        else
+            E.om_v = x;
+        x = E.om_v;
+        d = x * pw;
+        E.om_out = d;
+        E.om_pitch = d * w[0];
+        E.om_torch = d * w[1];
+        k.r = clampf(k.r + d * w[2], 0.0f, 0.999f);
+        k.c = clampf(k.c + d * w[3], -1.0f, 1.0f);
+        E.om_rune = d * w[2];
+        E.om_curse = d * w[3];
+        E.om_vol = 1.0f - pw * w[4] * (0.5f - 0.5f * x);
+        E.om_pan = d * w[5];
+        E.om_aura = pw * w[6] * (0.5f + 0.5f * x);
+        E.om_lofi = pw * w[7] * (0.5f + 0.5f * x);
+    }
     /* die Tonhöhe: Gleiten, Vibrato (in der Bildrate, stufig wie im Tracker), PORTAL */
     sm = E.sm[P_CREEP];
     E.glide = sm < 0.01f ? 1.0f : 1.0f - fm_exp2f(-(float)n / (FK_SR * 0.002f * fm_exp2f(sm * 12.5f)));
@@ -835,7 +902,7 @@ void fk_render(float *l, float *r, int n)
     vib = 0.0f;                              /* (das Vibrato der Tracker hat BEHOLDER; hier schwebt WANDER) */
     {
         int portal = (int)(B(P_PORTAL) * 24.0f + (B(P_PORTAL) < 0.0f ? -0.5f : 0.5f));
-        f0 = mtof(E.pitch + E.bend + vib + (float)portal);
+        f0 = mtof(E.pitch + E.bend + vib + (float)portal + E.om_pitch * 0.01f);
     }
     k.f = clampf(f0, 8.0f, 6000.0f);
     {   /* WANDER: acht langsame Zufallswege, jeder sucht sich alle paar Sekunden ein neues Ziel und gleitet hin */
@@ -865,7 +932,8 @@ void fk_render(float *l, float *r, int n)
         kb.h = (E.msm[1] - 0.5f) * 2.0f;
         kb.c = absf(kb.c) < 0.03f ? 0.0f : kb.c;
         kb.h = absf(kb.h) < 0.03f ? 0.0f : kb.h;
-        kb.r = clampf(E.msm[2] + E.wv[4] * 0.4f * E.sm[P_WANDER], 0.0f, 0.999f);
+        kb.r = clampf(E.msm[2] + E.wv[4] * 0.4f * E.sm[P_WANDER] + E.om_rune, 0.0f, 0.999f);
+        kb.c = clampf(kb.c + E.om_curse, -1.0f, 1.0f);
         kb.a = E.msm[3];
         ga = fm_sqrtf(1.0f - m) * GAIN[E.algo];               /* gleiche Leistung */
         gb = fm_sqrtf(m) * GAIN[nx];
@@ -912,16 +980,16 @@ void fk_render(float *l, float *r, int n)
     fc_lp = torch < 0.0f ? 18000.0f * fm_exp2f(torch * 9.0f) : 18000.0f;
     fc_hp = torch > 0.0f ? 20.0f * fm_exp2f(torch * 8.5f) : 20.0f;
     {   /* WANDER: auch das Filter wandert (bis 1,5 Oktaven) */
-        float wf = fm_exp2f(E.wv[5] * 1.5f * E.sm[P_WANDER]);
+        float wf = fm_exp2f(E.wv[5] * 1.5f * E.sm[P_WANDER] + E.om_torch);   /* und OMEN */
         fc_lp = clampf(fc_lp * wf, 40.0f, 18000.0f);
         fc_hp = clampf(fc_hp * wf, 10.0f, 15000.0f);
     }
     {
         float al = clampf(TAU * fc_lp / FK_SR, 0.0f, 1.0f), ah = clampf(TAU * fc_hp / FK_SR, 0.0f, 1.0f);
         /* BITS: 16 .. 1 Bit; AGE: die Abtastrate 44,1 kHz .. 2 kHz (Halten) */
-        bits = 16.0f - E.sm[P_BITS] * 15.0f;
+        bits = clampf(16.0f - E.sm[P_BITS] * 15.0f - E.om_lofi * 9.0f, 1.0f, 16.0f);   /* OMEN DECAY: zerfällt */
         steps = fm_exp2f(bits - 1.0f);
-        age_hz = 44100.0f * fm_exp2f(-E.sm[P_AGE] * 4.46f);
+        age_hz = 44100.0f * fm_exp2f(-clampf(E.sm[P_AGE] + E.om_lofi * 0.45f, 0.0f, 1.0f) * 4.46f);
         for (i = 0; i < n; i++) {
             float g = E.gate || E.hold, a = gl[i], b = gr[i];
             if (g)
@@ -956,7 +1024,7 @@ void fk_render(float *l, float *r, int n)
      * Rückkopplung ist weich begrenzt. So werden die 8-Bit-Klänge zu Drones. */
     {
         static const float RAT[FK_NRES] = {1.0f, 2.0f, 1.5f, 3.0f, 1.0035f, 2.004f, 0.75f, 4.0f};
-        float au = E.sm[P_AURA];
+        float au = clampf(E.sm[P_AURA] + E.om_aura, 0.0f, 1.0f);
         int j;
         if (au > 0.005f || E.rlp[0] != 0.0f || E.rlp[4] != 0.0f) {
             float fb = 0.90f + 0.0985f * fm_sqrtf(au), damp = 0.30f + 0.25f * E.sm[P_DECAY], wet = au,
@@ -1119,8 +1187,12 @@ void fk_render(float *l, float *r, int n)
         E.dcx[1] = b;
         m = (E.dcy[0] + E.dcy[1]) * 0.5f;
         s = (E.dcy[0] - E.dcy[1]) * 0.5f * wd;
-        a = softc((m + s) * lg) * E.duck_g;
-        b = softc((m - s) * lg) * E.duck_g;
+        {   /* OMEN: Lautstärke und Pan am Ausgang (mit dem Echo), über den Block gleitend */
+            float u = (float)i / (float)n, ov = E.om_vol0 + (E.om_vol - E.om_vol0) * u,
+                  op = E.om_pan0 + (E.om_pan - E.om_pan0) * u;
+            a = softc((m + s) * lg) * E.duck_g * ov * (op > 0.0f ? 1.0f - op : 1.0f);   /* nur die andere Seite leiser */
+            b = softc((m - s) * lg) * E.duck_g * ov * (op < 0.0f ? 1.0f + op : 1.0f);
+        }
         l[i] = a;
         r[i] = b;
         u = absf(a) > absf(b) ? absf(a) : absf(b);
@@ -1132,6 +1204,8 @@ void fk_render(float *l, float *r, int n)
             E.clip = 1;
         E.lvl += (u - E.lvl) * (u > E.lvl ? 0.01f : 0.0004f);
     }
+    E.om_vol0 = E.om_vol;
+    E.om_pan0 = E.om_pan;
     E.dcy[0] = fm_flush(E.dcy[0]);
     E.dcy[1] = fm_flush(E.dcy[1]);
     E.env = fm_flush(E.env);

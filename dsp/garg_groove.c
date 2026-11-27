@@ -62,6 +62,8 @@ static struct {
     int running, step, ext_stop;
     float pos, ss;                       /* im Schritt (Samples), die Länge eines Schritts */
     uint32_t ticks, since_clock, hits, rng, bar;
+    uint32_t cw_c, cw_s;                 /* die MIDI-Clock: Ticks und Samples, fürs Tempo */
+    float ext_bpm;
     int clock_step;                      /* die MIDI-Clock hat einen Schritt fällig */
     gr_voice v[GR_NV];
     float dk, dkv, dk_rel;               /* die Pumpe */
@@ -104,6 +106,7 @@ void gr_settings(const gr_set *s)
 void gr_clock(void)
 {
     G.since_clock = 0;
+    G.cw_c++;
     if (++G.ticks >= 6u) {               /* 24 je Viertel: 6 je Sechzehntel */
         G.ticks = 0;
         G.clock_step = 1;
@@ -393,6 +396,17 @@ void gr_render(float *dl, float *dr, float *wl, float *wr, float *duck, int n, f
         G.clock_step = 0;
     }
     G.since_clock += (uint32_t)n;
+    if (synced) {                        /* das Tempo der MIDI-Clock: über je 24 Ticks gemittelt */
+        G.cw_s += (uint32_t)n;
+        if (G.cw_c >= 24u) {
+            float b = 60.0f * FK_SR * (float)G.cw_c / (24.0f * (float)G.cw_s);
+            G.ext_bpm = G.ext_bpm > 0.0f ? G.ext_bpm + (b - G.ext_bpm) * 0.5f : b;
+            G.cw_c = G.cw_s = 0u;
+        }
+    } else {
+        G.cw_c = G.cw_s = 0u;
+        G.ext_bpm = 0.0f;
+    }
     for (i = 0; i < n; i++)
         wl[i] = wr[i] = duck[i] = 0.0f;  /* duck: hier erst die Auslöser */
     for (k = 0; k < GR_NV; k++)
@@ -430,3 +444,4 @@ uint32_t gr_hits(void) { return G.hits; }
 float gr_env(void) { return G.envm; }
 float gr_pump(void) { return G.dkv * gr_p(GR_BREATH); }
 int gr_synced(void) { return G.since_clock < (uint32_t)(0.5f * FK_SR); }
+float gr_tempo(void) { return gr_synced() && G.ext_bpm > 0.0f ? G.ext_bpm : (float)gr_bpm(G.s.p[GR_TEMPO]); }
