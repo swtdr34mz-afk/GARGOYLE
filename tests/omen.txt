@@ -25,16 +25,16 @@ wavstop
 # PATH: one step per detent: FLAME, ... STORM
 turn K4 1
 wait 100
-expect p25 21
+expect p25 19
 wav o_flame.wav
 wait 3000
 wavstop
 turn K4 5
 wait 100
-expect p25 92
+expect p25 83
 turn K4 1
 wait 100
-expect p25 106
+expect p25 96
 wav o_storm.wav
 wait 3000
 wavstop
@@ -64,17 +64,24 @@ tap LFO
 expect page 9
 tap LFO
 expect page 10
-expect p37 120
+expect p37 108
 # OMEN IV on MORPH: slow, strong
 turn K3 60 30
 wait 300
-turn K4 1
-wait 100
-expect p37 120
 wav o_morph.wav
 wait 6000
 wavstop
 shot omen4.png
+# PATH one further: TORCH (the TORCH knob itself, low pass and high pass)
+turn K4 1
+wait 100
+expect p37 121
+turn K1 20 150
+wait 500
+wav o_torch.wav
+wait 4000
+wavstop
+turn K3 -60 30
 tap LFO
 expect page 7
 # SPELL on GLO

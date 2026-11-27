@@ -64,7 +64,8 @@ ein Knopf überspringt das. Nach dem Start ist es still (HOLD aus): PLAY schalte
   Stereofeld): BREATH (das Filter atmet zu und auf, leiser im Ausatmen), FLAME (ein tiefes Filter-Auf-und-Zu),
   HAUNT (Vibrato bis ±60 Cent), AURA (der Resonator schwillt an), RUNE (Welle, Pulsbreite, Tabelle und ALCHEMY
   wandern), CURSE (Ring / Sync / FM pumpen – springt wie ein Arpeggio), DECAY (Bits und Abtastrate zerfallen im
-  Takt), STORM (alles), MORPH (schiebt den Klang zum nächsten Algorithmus und zurück). Tipp: mit wenig AURA (GLO) hört man RUNE und CURSE am deutlichsten. SHAPE und PATH springen je Raste eine Stufe. Die Kristallkugel
+  Takt), STORM (alles), MORPH (schiebt den Klang zum nächsten Algorithmus und zurück), TORCH (dreht den TORCH-Regler selbst: um die
+  Mitte herum mal Tiefpass, mal Hochpass; steht TORCH schon links oder rechts, schwingt es um diese Stellung). Tipp: mit wenig AURA (GLO) hört man RUNE und CURSE am deutlichsten. SHAPE und PATH springen je Raste eine Stufe. Die Kristallkugel
   im Bild pulsiert mit.
 
 Bipolare Regler rasten in der Mitte zwei Rasten lang ein.

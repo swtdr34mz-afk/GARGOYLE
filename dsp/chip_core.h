@@ -40,7 +40,7 @@ enum {
 #define FK_NPG (FK_NP - FK_NPA)
 #define FK_NSHAPE 12
 #define FK_NOMEN 4
-#define FK_NPATH 9
+#define FK_NPATH 10
 extern const char *const FK_SHAPE_NAME[FK_NSHAPE];
 extern const char *const FK_PATH_NAME[FK_NPATH];
 extern const uint8_t FK_GLOBAL_INIT[FK_NPG];

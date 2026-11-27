@@ -122,7 +122,7 @@ static struct {
     float om_vol0;                            /* die Lautstärke am Ende des letzten Blocks (gleitend) */
     float om_f0, olp[2][2];                   /* der Tiefpass von OMEN */
     float qpk;                                /* BITS: der Spitzenpegel */
-    float om_pitch, om_torch, om_rune, om_curse, om_alch, om_vol, om_aura, om_lofi, om_morph;
+    float om_pitch, om_torch, om_rune, om_curse, om_alch, om_vol, om_aura, om_lofi, om_morph, om_tk;
     int om_step, om_bar;
     float msm[4];
     int last_fate, last_quest;
@@ -844,19 +844,20 @@ void fk_render(float *l, float *r, int n)
     /* OMEN I..IV: vier LFOs, jeder bewegt mehrere Ziele zugleich (PATH); frei oder im Takt des GROOVE (an jedem Takt
      * ausgerichtet). Landen zwei auf demselben Ziel, zählen sie zusammen. */
     {
-        static const float PW[FK_NPATH][9] = {
+        static const float PW[FK_NPATH][10] = {
             /* nur der Klang, nicht das Stereofeld:
-             * Tonhöhe (Cent), Filter schließen (Oktaven), RUNE, CURSE, Lautstärke, ALCHEMY, AURA, Lo-Fi, MORPH */
-            {0, 5.0f, 0.15f, 0, 0.45f, 0, 0, 0, 0},      /* BREATH: das Filter atmet zu und auf, leiser im Ausatmen */
-            {0, 7.5f, 0.3f, 0, 0, 0, 0, 0, 0},           /* FLAME: ein tiefes Filter-Auf-und-Zu (Wah) */
-            {60, 3.0f, 0.25f, 0, 0, 0, 0, 0, 0},         /* HAUNT: die Tonhöhe schwankt (Vibrato bis ±60 Cent), dunkler */
-            {0, 3.5f, 0.2f, 0, 0, 0, 0.8f, 0, 0},        /* AURA: der Resonator schwillt an, das Licht wird dunkler */
-            {0, 3.0f, 0.8f, 0, 0, 0.7f, 0, 0, 0},        /* RUNE: Welle, Pulsbreite, Tabelle und ALCHEMY wandern (PWM) */
-            {0, 0, 0.3f, 0.8f, 0, 0, 0, 0, 0},           /* CURSE: Ring / Sync / FM pumpen (springt wie ein Arpeggio) */
-            {0, 3.0f, 0, 0, 0, 0, 0, 1.0f, 0},           /* DECAY: Bits und Abtastrate zerfallen im Takt */
-            {20, 5.0f, 0.4f, 0.5f, 0.2f, 0.3f, 0.4f, 0.4f, 0},   /* STORM: alles */
-            {0, 0, 0, 0, 0, 0, 0, 0, 1.0f}};             /* MORPH: hin und her zum nächsten Algorithmus */
-        float t[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0}, vol = 1.0f;
+             * Tonhöhe (Cent), Filter schließen (Oktaven), RUNE, CURSE, Lautstärke, ALCHEMY, AURA, Lo-Fi, MORPH, TORCH */
+            {0, 5.0f, 0.15f, 0, 0.45f, 0, 0, 0, 0, 0},      /* BREATH: das Filter atmet zu und auf, leiser im Ausatmen */
+            {0, 7.5f, 0.3f, 0, 0, 0, 0, 0, 0, 0},           /* FLAME: ein tiefes Filter-Auf-und-Zu (Wah) */
+            {60, 3.0f, 0.25f, 0, 0, 0, 0, 0, 0, 0},         /* HAUNT: die Tonhöhe schwankt (Vibrato bis ±60 Cent), dunkler */
+            {0, 3.5f, 0.2f, 0, 0, 0, 0.8f, 0, 0, 0},        /* AURA: der Resonator schwillt an, das Licht wird dunkler */
+            {0, 3.0f, 0.8f, 0, 0, 0.7f, 0, 0, 0, 0},        /* RUNE: Welle, Pulsbreite, Tabelle und ALCHEMY wandern (PWM) */
+            {0, 0, 0.3f, 0.8f, 0, 0, 0, 0, 0, 0},           /* CURSE: Ring / Sync / FM pumpen (springt wie ein Arpeggio) */
+            {0, 3.0f, 0, 0, 0, 0, 0, 1.0f, 0, 0},           /* DECAY: Bits und Abtastrate zerfallen im Takt */
+            {20, 5.0f, 0.4f, 0.5f, 0.2f, 0.3f, 0.4f, 0.4f, 0, 0},   /* STORM: alles */
+            {0, 0, 0, 0, 0, 0, 0, 0, 1.0f, 0},          /* MORPH: hin und her zum nächsten Algorithmus */
+            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6f}};         /* TORCH: der TORCH-Regler selbst, links Tiefpass, rechts Hochpass */
+        float t[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, vol = 1.0f;
         int l, j, newbar = 0;
         if (omen_sync_bpm > 0.0f) {
             int st = gr_step();
@@ -972,8 +973,9 @@ void fk_render(float *l, float *r, int n)
             t[6] += up * w[6];
             t[7] += up * w[7];
             t[8] += up * w[8];
+            t[9] += d * w[9];
         }
-        for (j = 0; j < 9; j++)
+        for (j = 0; j < 10; j++)
             t[j] = j == 1 ? clampf(t[j], -9.0f, 0.0f) : j == 0 ? t[j] : clampf(t[j], -1.0f, 1.0f);
         E.om_pitch = t[0];
         E.om_torch = t[1];
@@ -987,6 +989,7 @@ void fk_render(float *l, float *r, int n)
         E.om_aura = t[6];
         E.om_lofi = t[7];
         E.om_morph = t[8];
+        E.om_tk = t[9];
     }
     /* die Tonhöhe: Gleiten, Vibrato (in der Bildrate, stufig wie im Tracker), PORTAL */
     sm = E.sm[P_CREEP];
@@ -1070,7 +1073,7 @@ void fk_render(float *l, float *r, int n)
     atk = 1.0f * fm_exp2f(E.sm[P_AWAKEN] * 13.0f) * 0.001f * FK_SR;
     rel = 5.0f * fm_exp2f(E.sm[P_SLUMBER] * 11.5f) * 0.001f * FK_SR;
     /* TORCH: links schließt der Tiefpass, rechts öffnet der Hochpass (2 Pole, einfach wie damals) */
-    torch = B(P_TORCH);
+    torch = clampf(B(P_TORCH) + E.om_tk, -1.0f, 1.0f);   /* (OMEN TORCH dreht mit) */
     fc_lp = torch < 0.0f ? 18000.0f * fm_exp2f(torch * 9.0f) : 18000.0f;
     fc_hp = torch > 0.0f ? 20.0f * fm_exp2f(torch * 8.5f) : 20.0f;
     {   /* WANDER: auch das Filter wandert (bis 1,5 Oktaven) */
