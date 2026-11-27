@@ -1,0 +1,253 @@
+# GARGOYLE: every knob on every page, a recording before and after (checked offline)
+wait 4500
+tap PLAY
+expect hold 1
+key 0 down 100
+wait 100
+key 0 up
+wait 1500
+tap HOME
+wait 200
+wav fk_SUMMON_1_a.wav
+wait 1200
+wavstop
+turn K1 30 250
+wait 1500
+wav fk_SUMMON_1_b.wav
+wait 1200
+wavstop
+turn K1 -30 250
+wait 1500
+wav fk_SUMMON_2_a.wav
+wait 1200
+wavstop
+turn K2 30 250
+wait 1500
+wav fk_SUMMON_2_b.wav
+wait 1200
+wavstop
+turn K2 -30 250
+wait 1500
+wav fk_SUMMON_3_a.wav
+wait 1200
+wavstop
+turn K3 30 250
+wait 1500
+wav fk_SUMMON_3_b.wav
+wait 1200
+wavstop
+turn K3 -30 250
+wait 1500
+wav fk_SUMMON_4_a.wav
+wait 1200
+wavstop
+turn K4 30 250
+wait 1500
+wav fk_SUMMON_4_b.wav
+wait 1200
+wavstop
+turn K4 -30 250
+wait 1500
+tap FX
+wait 200
+wav fk_ECHO_1_a.wav
+wait 1200
+wavstop
+turn K1 30 250
+wait 1500
+wav fk_ECHO_1_b.wav
+wait 1200
+wavstop
+turn K1 -30 250
+wait 1500
+wav fk_ECHO_2_a.wav
+wait 1200
+wavstop
+turn K2 -30 250
+wait 1500
+wav fk_ECHO_2_b.wav
+wait 1200
+wavstop
+turn K2 30 250
+wait 1500
+wav fk_ECHO_3_a.wav
+wait 1200
+wavstop
+turn K3 30 250
+wait 1500
+wav fk_ECHO_3_b.wav
+wait 1200
+wavstop
+turn K3 -30 250
+wait 1500
+wav fk_ECHO_4_a.wav
+wait 1200
+wavstop
+turn K4 -30 250
+wait 1500
+wav fk_ECHO_4_b.wav
+wait 1200
+wavstop
+turn K4 30 250
+wait 1500
+tap ENV
+wait 200
+wav fk_RITUAL_1_a.wav
+wait 1200
+wavstop
+turn K1 30 250
+wait 1500
+wav fk_RITUAL_1_b.wav
+wait 1200
+wavstop
+turn K1 -30 250
+wait 1500
+wav fk_RITUAL_2_a.wav
+wait 1200
+wavstop
+turn K2 7 250
+wait 1500
+wav fk_RITUAL_2_b.wav
+wait 1200
+wavstop
+turn K2 -7 250
+wait 1500
+wav fk_RITUAL_3_a.wav
+wait 1200
+wavstop
+turn K3 30 250
+wait 1500
+wav fk_RITUAL_3_b.wav
+wait 1200
+wavstop
+turn K3 -30 250
+wait 1500
+wav fk_RITUAL_4_a.wav
+wait 1200
+wavstop
+turn K4 -30 250
+wait 1500
+wav fk_RITUAL_4_b.wav
+wait 1200
+wavstop
+turn K4 30 250
+wait 1500
+tap EDIT
+wait 200
+wav fk_LORE_1_a.wav
+wait 1200
+wavstop
+turn K1 30 250
+wait 1500
+wav fk_LORE_1_b.wav
+wait 1200
+wavstop
+turn K1 -30 250
+wait 1500
+wav fk_LORE_2_a.wav
+wait 1200
+wavstop
+turn K2 30 250
+wait 1500
+wav fk_LORE_2_b.wav
+wait 1200
+wavstop
+turn K2 -30 250
+wait 1500
+wav fk_LORE_3_a.wav
+wait 1200
+wavstop
+turn K3 30 250
+wait 1500
+wav fk_LORE_3_b.wav
+wait 1200
+wavstop
+turn K3 -30 250
+wait 1500
+wav fk_LORE_4_a.wav
+wait 1200
+wavstop
+turn K4 -30 250
+wait 1500
+wav fk_LORE_4_b.wav
+wait 1200
+wavstop
+turn K4 30 250
+wait 1500
+tap GLO
+wait 200
+wav fk_SPELL_1_a.wav
+wait 1200
+wavstop
+turn K1 30 250
+wait 1500
+wav fk_SPELL_1_b.wav
+wait 1200
+wavstop
+turn K1 -30 250
+wait 1500
+wav fk_SPELL_2_a.wav
+wait 1200
+wavstop
+turn K2 30 250
+wait 1500
+wav fk_SPELL_2_b.wav
+wait 1200
+wavstop
+turn K2 -30 250
+wait 1500
+wav fk_SPELL_3_a.wav
+wait 1200
+wavstop
+turn K3 30 250
+wait 1500
+wav fk_SPELL_3_b.wav
+wait 1200
+wavstop
+turn K3 -30 250
+wait 1500
+wav fk_SPELL_4_a.wav
+wait 1200
+wavstop
+turn K4 -30 250
+wait 1500
+wav fk_SPELL_4_b.wav
+wait 1200
+wavstop
+turn K4 30 250
+wait 1500
+tap LFO
+wait 200
+turn K3 60 30
+wait 300
+wav fk_OMEN_1_a.wav
+wait 1200
+wavstop
+turn K1 30 250
+wait 1500
+wav fk_OMEN_1_b.wav
+wait 1200
+wavstop
+turn K1 -30 250
+wait 1500
+wav fk_OMEN_2_a.wav
+wait 1200
+wavstop
+turn K2 30 250
+wait 1500
+wav fk_OMEN_2_b.wav
+wait 1200
+wavstop
+turn K2 -30 250
+wait 1500
+wav fk_OMEN_4_a.wav
+wait 1200
+wavstop
+turn K4 30 250
+wait 1500
+wav fk_OMEN_4_b.wav
+wait 1200
+wavstop
+turn K4 -30 250
+wait 1500
+shot full_end.png
