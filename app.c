@@ -14,7 +14,8 @@
  *   HOME 3x    SETUP:  LEVEL, HUMAN (Zufall), FOLLOW (dem Grundton folgen), TUNE
  *   EDIT       DEEP:   COLOR (MORPH), GLIDE, WIDTH, LEVEL
  *   FX         FX:     MODE (DREAM, DARK, RISE, LIGHT, RAIN), X (je Modus), ECHO (die Delay-Zeit), AGE (STRETCH)
- *   SELECT     der Raum (22 Räume = die 22 Algorithmen von FIKH-S), der Dungeon-Plan erscheint; PRESET ebenso
+ *   SELECT     WRATH: ein Makro über allem, für live (der Drache erwacht), 4 je Raste
+ *   PRESET     der Raum (22 Räume = die 22 Algorithmen von FIKH-S)
  *   ALGORITHM  SCAN (grob, für live); auf den GROOVE-Seiten: der Style
  *   PLAY       HOLD: der Drone bleibt stehen, die Tasten ändern nur noch den Grundton
  *   REC        WÜRFELN (SEED und SCAN neu; 1 s: dazu COLOR und ECHO); auf den GROOVE-Seiten: der GROOVE an / aus
@@ -23,7 +24,7 @@
  *   GLO        VOL: die Pegel im Bild
  *   SAVE       speichern (sonst von selbst, wenn es still ist); SAVE + eine der ersten 8 weißen Tasten: ein Snapshot,
  *              SEL + die Taste: zurückgeholt (die Makros gleiten hinüber)
- *   MIDI       Noten (alle Kanäle), Pitch Bend ±2, CC 1 COLOR, CC 70..73 TONE MOVE GRIT SPACE, Clock / Start / Stop
+ *   MIDI       Noten (alle Kanäle), Pitch Bend ±2, CC 1 COLOR, CC 70..73 TONE MOVE GRIT SPACE, CC 75 WRATH, Clock / Start / Stop
  *              für den GROOVE */
 #include "fastmath.h"
 #include "fikh_core.h"
@@ -68,7 +69,7 @@ typedef struct {
     uint8_t ss[FK_NALGO][2];             /* SEED, SCAN je Raum */
     uint8_t fx[4];                       /* FX: für alle Räume gleich */
     gr_set grv;                          /* der GROOVE: global, ein Raumwechsel ändert den Beat nicht */
-    uint8_t rsv[2];
+    uint8_t wrath, rsv;                  /* WRATH (SELECT): global, über allem */
     snap_t snaps[NSNAP];
 } settings_t;
 _Static_assert(sizeof(settings_t) <= PLAT_STORE_MAX, "die Einstellungen passen nicht in ein Speicherobjekt");
@@ -111,7 +112,7 @@ static void settings_load(void)
 {
     int a, i, got = plat_store_load(OBJ_SETTINGS, &set, sizeof set), ok;
     ok = got == (int)sizeof set && set.magic == SET_MAGIC && set.algo < FK_NALGO && set.oct <= 4u && set.hold <= 1u
-         && set.snap <= NSNAP && set.grv.on <= 1u && set.grv.style < GR_NSTYLES;
+         && set.snap <= NSNAP && set.grv.on <= 1u && set.grv.style < GR_NSTYLES && set.wrath <= 127u;
     for (i = 0; ok && i < NSNAP; i++)
         if (set.snaps[i].used > 1u || set.snaps[i].algo >= FK_NALGO || set.snaps[i].oct > 4u)
             ok = 0;
@@ -195,7 +196,33 @@ static void build(int a, const uint8_t *m, const uint8_t *d, const uint8_t *ss, 
 #undef VI
 }
 
-static void all_params(uint8_t *o) { build(set.algo, set.m[set.algo], set.d[set.algo], set.ss[set.algo], set.fx, o); }
+/* WRATH (SELECT): ein Makro über allem, für live – der Drache erwacht: Kreuzmodulation und Sättigung bis zum Anschlag,
+ * die Rückkopplung kocht, Metall in der Frequenzverschiebung, die Farbe wandert, der Hall wächst mit */
+static uint8_t lerp8(int a, int b, float t) { return (uint8_t)iclamp(a + (int)((float)(b - a) * t + 0.5f), 0, 127); }
+static void wrath(int a, int wv, uint8_t *o)
+{
+    float w = (float)wv / 127.0f;
+    if (wv <= 0)
+        return;
+    o[P_WARP] = lerp8(o[P_WARP], o[P_WARP] >= 64 ? 127 : 0, w * 0.85f);
+    o[P_FUSE] = lerp8(o[P_FUSE], 124, w * 0.8f);
+    o[P_FEED] = lerp8(o[P_FEED], o[P_FEED] >= 64 ? 122 : 6, w * 0.7f);
+    if (a != 8)
+        o[P_CELL] = lerp8(o[P_CELL], 104, w * w * 0.7f);
+    o[P_MORPH] = (uint8_t)iclamp(o[P_MORPH] + (int)(w * 36.0f), 0, 127);
+    o[P_SPAN] = lerp8(o[P_SPAN], o[P_SPAN] >= 64 ? 127 : 0, w * 0.5f);
+    o[P_DRIFT] = lerp8(o[P_DRIFT], 127, w * 0.6f);
+    if (o[P_VMIX] < (uint8_t)(w * 100.0f))
+        o[P_VMIX] = (uint8_t)(w * 100.0f);
+    if (o[P_VDECAY] < (uint8_t)(60.0f + w * 60.0f))
+        o[P_VDECAY] = (uint8_t)(60.0f + w * 60.0f);
+}
+
+static void all_params(uint8_t *o)
+{
+    build(set.algo, set.m[set.algo], set.d[set.algo], set.ss[set.algo], set.fx, o);
+    wrath(set.algo, set.wrath, o);
+}
 static void push_params(void)
 {
     uint8_t o[FK_NP];
@@ -289,7 +316,8 @@ static struct {
     uint32_t msg_until;
     uint32_t rec_t, seq_t;               /* REC / SEQ gedrückt seit (0: nicht, oder schon gehandelt) */
     uint32_t dice_at;
-    uint32_t plan_until;                 /* der Dungeon-Plan (nach einem Raumwechsel) */
+    uint32_t trans_at;                   /* ein Raumwechsel: der Blick wird kurz dunkel */
+    uint32_t wrath_until;                /* WRATH wurde gedreht: die Anzeige */
     uint32_t redraw;
     int batt_drawn;
     uint32_t load_at;
@@ -298,9 +326,6 @@ static struct {
     uint32_t save_at;
     uint8_t batt_test;
     uint32_t hits_seen, beat_at;         /* GROOVE: der letzte Schlag (die HOME-LED blitzt, das Herz oben) */
-    float ecg[96];                       /* GROOVE: der Verlauf (wie ein EKG) */
-    float spike;                         /* der nächste Ausschlag (jeder Schlag) */
-    uint32_t ecg_w;
 } ui;
 
 static volatile uint8_t midi_touched;    /* ein CC aus dem Audio-Interrupt: neu zeichnen, speichern */
@@ -494,13 +519,13 @@ static void knob_turn(int k, int32_t e)
 static void page_set(int pg)
 {
     int i;
+    ui.trans_at = plat_ms();             /* ein anderer Gang: ein Schritt durchs Dunkel */
     for (i = 0; i < 4; i++) {
         ui.knob_at[i] = 0;
         ui.rest[i] = 0;
     }
     ui.page = (uint8_t)pg;
     ui.read_until = 0;
-    ui.plan_until = 0;
     ui.redraw |= R_ALL;
     app_say(PAGE_NAME[pg], pg == PG_GROOVE || pg == PG_SETUP ? (set.grv.on ? GR_STYLE_NAME[set.grv.style] : "OFF")
                                                               : "");
@@ -517,7 +542,7 @@ static void algo_set(int a)
     fk_params(o);
     plat_unlock(f);
     dirty();
-    ui.plan_until = plat_ms() + 1800u;
+    ui.trans_at = plat_ms();
     ui.redraw |= R_ALL;
     app_say(ROOM_NAME[set.algo], FK_ALGOS[set.algo].name);
 }
@@ -787,9 +812,18 @@ static void input(void)
     for (i = 0; i < 4u; i++)
         if ((e = plat_enc(EN_K1 + (int)i)) != 0)
             knob_turn((int)i, e);
-    if ((e = plat_enc(EN_SELECT)) != 0)          /* der Raum */
-        algo_set((int)set.algo + (e > 0 ? 1 : -1));
-    if ((e = plat_enc(EN_PRESET)) != 0)
+    if ((e = plat_enc(EN_SELECT)) != 0) {        /* WRATH: grob, jede Raste hört man */
+        int v = iclamp((int)set.wrath + (int)accel(EN_SELECT, e, 4, 10), 0, 127);
+        if (v != set.wrath) {
+            set.wrath = (uint8_t)v;
+            push_params();
+            dirty();
+        }
+        ui.wrath_until = plat_ms() + 1500u;
+        ui.msg_until = 0;
+        ui.redraw |= R_READ | R_HEAD | R_MAP;
+    }
+    if ((e = plat_enc(EN_PRESET)) != 0)          /* der Raum */
         algo_set((int)set.algo + (e > 0 ? 1 : -1));
     if ((e = plat_enc(EN_ALGO)) != 0) {
         if (groove_page()) {                     /* auf den GROOVE-Seiten: der Style */
@@ -849,34 +883,57 @@ static void lights(void)
 }
 
 /* ============================================================== Zeichnen ===
- * Ein Dungeon aus einem alten Brettspiel: dunkler Stein, ein Rahmen in Rot und Gold, gemeißelte Schrift, Fackellicht.
- * Die vier Regler haben feste Farben (die Helden): Rot, Orange, Grün, Blau, auf jeder Seite gleich. Alles
- * kantengeglättet (ui_gfx.h). Gezeichnet wird immer die ganze Szene, aber nur in den Bereich, der neu muss. */
+ * Wie ein Dungeon-Crawler der frühen 90er: oben links der Blick in den Gang (vorgerendert: tools/gen_art.py, art.h),
+ * am Ende im Dunkeln ein Drache: nur seine Augen und die Glut; die Fackeln flackern mit dem Klang. Darum ein
+ * Rahmen aus blaugrauem Marmor mit erhabenen Feldern: rechts die Kuppel mit der Nummer des Raums (im GROOVE die 16
+ * Schritte als Runen), darunter die Seite und HOLD / Oktave / Akku (drei Herzen); unten die vier Helden (die Regler,
+ * jeder in seiner Farbe), ganz unten das Nachrichtenfeld. Gezeichnet wird nur, was sich ändert. */
 #undef C_WHITE
 #define C_WHITE RGB(238, 236, 228)
 #include "ui_gfx.h"
+#include "art.h"
 
-#define GOLD rgb3(201, 149, 47)
-#define GOLD_HI rgb3(240, 192, 80)
-#define GOLD_DIM rgb3(110, 82, 40)
-#define RED rgb3(214, 52, 40)
+#define GOLD rgb3(214, 168, 70)
+#define GOLD_HI rgb3(250, 214, 120)
+#define GOLD_DIM rgb3(120, 90, 40)
+#define RED rgb3(220, 48, 36)
 #define RED_DIM rgb3(70, 16, 12)
-#define FRAME_RED rgb3(130, 28, 20)
-#define FIRE rgb3(255, 138, 42)
-#define C_GOLD RGB(232, 182, 74)
-#define C_GOLD_HI RGB(246, 214, 140)
-#define C_GOLD_DIM RGB(150, 120, 80)
-#define C_STONE RGB(168, 151, 122)
+#define FIRE rgb3(255, 140, 40)
+#define FACE rgb3(92, 98, 150)               /* die Felder: blau-violett, erhaben */
+#define FACE_HI rgb3(164, 170, 220)
+#define FACE_LO rgb3(34, 36, 64)
+#define C_GOLD RGB(232, 186, 84)
+#define C_GOLD_HI RGB(250, 222, 150)
+#define C_GOLD_DIM RGB(150, 120, 70)
+#define C_TXT RGB(244, 244, 236)
+#define C_TXT_DIM RGB(150, 154, 186)
 #define C_RED RGB(240, 80, 60)
 
-static const col3 HERO[4] = {{224, 80, 58}, {232, 150, 46}, {95, 191, 104}, {90, 146, 232}};
+static const col3 HERO[4] = {{226, 70, 52}, {236, 150, 44}, {96, 196, 96}, {96, 150, 240}};
+static const char *const HERO_CLASS[4] = {"FIGHTER", "DWARF", "ELF", "MAGE"};
+/* jede Seite ihr eigener Raum mit ihrem eigenen Monster (so merkt man sich, wo man ist); die Bilder: art.h
+ * PLAY Ork, GROOVE Skelett, SETUP Schleim, DEEP Betrachter, FX Kristallkugel; WRATH ab der Hälfte: der Drache;
+ * FREEZE: das Wasser; SAVE gehalten (Snapshots): der Schatz */
+enum { SC_ORC, SC_DRAGON, SC_ORB, SC_SKELETON, SC_SLIME, SC_BEHOLDER, SC_TREASURE, SC_WATER };
+static const uint8_t PAGE_SCENE[NPAGES] = {SC_ORC, SC_SKELETON, SC_SLIME, SC_BEHOLDER, SC_ORB};
+static int snap_mode(void);
+static int scene_now(void)
+{
+    if (snap_mode() == 2)
+        return SC_TREASURE;
+    if (fk_frozen())
+        return SC_WATER;
+    if (set.wrath >= 64)
+        return SC_DRAGON;
+    return PAGE_SCENE[ui.page];
+}
 
 #define SCOPE_N 1024u
 static float scope_ring[SCOPE_N];
 static volatile uint32_t scope_w;
 
-static int32_t g_ox;                     /* der Ausschnitt: links (Bildschirm-x) */
-static int32_t g_x0, g_y0, g_x1, g_y1;   /* und seine Grenzen (Bildschirm) */
+static int32_t g_ox;
+static int32_t g_x0, g_y0, g_x1, g_y1;
 
 static int vis(float x0, float y0, float x1, float y1)
 {
@@ -905,7 +962,7 @@ static void s_arc(float x, float y, float rm, float w, float a0, float a1, col3 
     if (vis(x - R, y - R, x + R, y + R))
         ring_arc(SX(x), y, rm, w, a0, a1, c, a, glow);
 }
-static void s_rect(float x, float y, float w, float h, col3 c, float a)   /* ein gefülltes Rechteck (ganze Pixel) */
+static void s_rect(float x, float y, float w, float h, col3 c, float a)
 {
     int32_t i, j, x0, x1, y0, y1;
     if (!vis(x, y, x + w, y + h))
@@ -918,41 +975,23 @@ static void s_rect(float x, float y, float w, float h, col3 c, float a)   /* ein
         for (i = x0; i < x1; i++)
             px_blend(i - g_ox, j, c, a);
 }
-static void s_frame(float x0, float y0, float x1, float y1, float r, col3 c, float a)
-{
-    if (!vis(x0 - 1, y0 - 1, x1 + 2, y1 + 2))
-        return;
-    s_line(x0 + r, y0, x1 - r, y0, c, a);
-    s_line(x0 + r, y1, x1 - r, y1, c, a);
-    s_line(x0, y0 + r, x0, y1 - r, c, a);
-    s_line(x1, y0 + r, x1, y1 - r, c, a);
-    if (r > 0.5f) {
-        s_arc(x0 + r, y0 + r, r, 1.0f, -90.0f, 0.0f, c, a, 0.0f);
-        s_arc(x1 - r, y0 + r, r, 1.0f, 0.0f, 90.0f, c, a, 0.0f);
-        s_arc(x1 - r, y1 - r, r, 1.0f, 90.0f, 180.0f, c, a, 0.0f);
-        s_arc(x0 + r, y1 - r, r, 1.0f, 180.0f, 270.0f, c, a, 0.0f);
-    }
-}
-/* Text mit Meißelkante: ein dunkler Schatten darunter, eine helle Kante darüber */
-static void s_text(float x, float y, const felucca_font_t *f, const char *s, uint16_t c, int engrave)
+/* Text: Pixelschrift mit hartem schwarzem Schatten, wie damals */
+static void s_text(float x, float y, const felucca_font_t *f, const char *s, uint16_t c, int shadow)
 {
     int32_t w = text_w(f, s);
     if (!vis(x - 2, y - 2, x + (float)w + 2, y + (float)f->h + 2))
         return;
-    if (engrave) {
+    if (shadow)
         cv_text((int32_t)SX(x) + 1, (int32_t)y + 1, f, s, RGB(0, 0, 0));
-        if (engrave > 1)
-            cv_text((int32_t)SX(x), (int32_t)y + 2, f, s, RGB(70, 14, 8));
-    }
     cv_text((int32_t)SX(x), (int32_t)y, f, s, c);
 }
-static void s_ctext(float cx, float y, const felucca_font_t *f, const char *s, uint16_t c, int engrave)
+static void s_ctext(float cx, float y, const felucca_font_t *f, const char *s, uint16_t c, int sh)
 {
-    s_text(cx - (float)(text_w(f, s) / 2), y, f, s, c, engrave);
+    s_text(cx - (float)(text_w(f, s) / 2), y, f, s, c, sh);
 }
-static void s_rtext(float rx, float y, const felucca_font_t *f, const char *s, uint16_t c, int engrave)
+static void s_rtext(float rx, float y, const felucca_font_t *f, const char *s, uint16_t c, int sh)
 {
-    s_text(rx - (float)text_w(f, s), y, f, s, c, engrave);
+    s_text(rx - (float)text_w(f, s), y, f, s, c, sh);
 }
 
 static uint32_t hash_ui(uint32_t x)
@@ -965,155 +1004,56 @@ static uint32_t hash_ui(uint32_t x)
     return x;
 }
 
-/* ein gefülltes Vieleck (gerade-ungerade), Zeile für Zeile, mit weichen Enden; die Kanten danach glatt nachgezogen */
-#define POLY_MAX 64
-static void s_poly(const float *px, const float *py, int n, col3 c, float a)
-{
-    float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f;
-    int32_t y, i, j;
-    for (i = 0; i < n; i++) {
-        x0 = px[i] < x0 ? px[i] : x0;
-        x1 = px[i] > x1 ? px[i] : x1;
-        y0 = py[i] < y0 ? py[i] : y0;
-        y1 = py[i] > y1 ? py[i] : y1;
-    }
-    if (!vis(x0, y0, x1 + 1.0f, y1 + 1.0f))
-        return;
-    for (y = (int32_t)y0; y <= (int32_t)y1; y++) {
-        float xs[POLY_MAX], yc = (float)y + 0.5f;
-        int m = 0;
-        if (y < g_y0 || y >= g_y1)
-            continue;
-        for (i = 0, j = n - 1; i < n; j = i++) {
-            if ((py[i] > yc) != (py[j] > yc) && m < POLY_MAX)
-                xs[m++] = px[i] + (yc - py[i]) * (px[j] - px[i]) / (py[j] - py[i]);
-        }
-        for (i = 1; i < m; i++) {        /* sortieren (wenige) */
-            float t = xs[i];
-            for (j = i - 1; j >= 0 && xs[j] > t; j--)
-                xs[j + 1] = xs[j];
-            xs[j + 1] = t;
-        }
-        for (i = 0; i + 1 < m; i += 2) {
-            float a0 = xs[i], a1 = xs[i + 1];
-            int32_t x;
-            for (x = (int32_t)a0; x <= (int32_t)a1; x++) {
-                float cov = 1.0f;
-                if (x < g_x0 || x >= g_x1)
-                    continue;
-                if ((float)x < a0)
-                    cov = (float)x + 1.0f - a0;
-                if ((float)x + 1.0f > a1)
-                    cov -= (float)x + 1.0f - a1;
-                if (cov > 0.0f)
-                    px_blend(x - g_ox, y, c, a * sat01(cov));
-            }
-        }
-    }
-    for (i = 0, j = n - 1; i < n; j = i++)
-        s_line(px[j], py[j], px[i], py[i], c, a * 0.6f);
-}
-
-/* der Gargoyle: gekauert auf seinem Sockel, die Flügel offen (eine eigene Zeichnung, Koordinaten 0..640 x 0..340) */
-static const int16_t GARG_PT[][2] = {
-    {320, 72}, {306, 74}, {292, 46}, {298, 84}, {294, 98}, {284, 104}, {262, 92}, {230, 60}, {196, 36}, {184, 32},
-    {182, 44}, {190, 48}, {176, 74}, {160, 120}, {150, 176}, {170, 156}, {184, 170}, {198, 146}, {216, 160},
-    {230, 136}, {252, 148}, {270, 128}, {266, 150}, {258, 172}, {268, 196}, {300, 196}, {306, 178}, {320, 182},
-    {334, 178}, {340, 196}, {372, 196}, {382, 172}, {374, 150}, {370, 128}, {388, 148}, {410, 136}, {424, 160},
-    {442, 146}, {456, 170}, {470, 156}, {490, 176}, {480, 120}, {464, 74}, {450, 48}, {458, 44}, {456, 32},
-    {444, 36}, {410, 60}, {378, 92}, {356, 104}, {346, 98}, {342, 84}, {348, 46}, {334, 74}};
-#define GARG_N ((int)(sizeof GARG_PT / sizeof GARG_PT[0]))
-/* gezeichnet mit der Mitte (cx, Kopf oben bei y0) und dem Maßstab sc */
-static void gargoyle(float cx, float y0, float sc, col3 fill, float fa, col3 edge, float ea)
-{
-    float px[GARG_N + 1], py[GARG_N + 1];
-    int i;
-    for (i = 0; i < GARG_N; i++) {
-        px[i] = cx + ((float)GARG_PT[i][0] - 320.0f) * sc;
-        py[i] = y0 + ((float)GARG_PT[i][1] - 28.0f) * sc;
-    }
-    if (fa > 0.0f)
-        s_poly(px, py, GARG_N, fill, fa);
-    if (ea > 0.0f)
-        for (i = 0; i < GARG_N; i++)
-            s_line(px[i], py[i], px[(i + 1) % GARG_N], py[(i + 1) % GARG_N], edge, ea);
-    {   /* der Sockel */
-        float sx0 = cx - 74.0f * sc, sy0 = y0 + 168.0f * sc, sw = 148.0f * sc, sh = 18.0f * sc;
-        if (fa > 0.0f)
-            s_rect(sx0, sy0, sw, sh, fill, fa);
-        if (ea > 0.0f)
-            s_frame(sx0, sy0, sx0 + sw, sy0 + sh, 0.0f, edge, ea);
-    }
-}
-/* seine Augen: zwei glühende Schlitze, open 0..1 (sie öffnen sich von der Mitte aus) */
-static void garg_eyes(float cx, float y0, float sc, float open, float glow)
-{
-    float ey = y0 + (90.0f - 28.0f) * sc, dx = 11.0f * sc, w = 6.5f * sc, h = 3.2f * sc * open;
-    int s;
-    if (open <= 0.01f)
-        return;
-    for (s = -1; s <= 1; s += 2) {
-        float ex = cx + (float)s * dx, t;
-        s_bloom(ex, ey, 9.0f * sc + 4.0f, FIRE, 0.25f * glow);
-        for (t = -w; t <= w; t += 0.5f) {    /* ein Mandelauge: in der Mitte am höchsten */
-            float hh = h * (1.0f - (t / w) * (t / w));
-            if (hh > 0.2f)
-                s_line(ex + t, ey - hh, ex + t, ey + hh, rgb3(255, 110, 40), 0.55f + 0.45f * glow);
-        }
-        s_disc(ex, ey, h * 0.45f + 0.3f, rgb3(255, 220, 150), 0.7f * glow * open);
-    }
-}
-
-/* der Grund: dunkler, warmer Stein mit feinem Korn und ganz leisen Fugen */
+/* der Grund: dunkler blaugrauer Marmor mit Schlieren (wie der Rahmen der alten Spiele) */
 static void bg_fill(int32_t ry0, int32_t h)
 {
     int32_t x, y;
     for (y = 0; y < h; y++) {
-        int32_t sy = ry0 + y, row = sy / 16, fug = (sy % 16) == 0;
-        float vy = ((float)sy - 120.0f) / 150.0f;
+        int32_t sy = ry0 + y;
         for (x = 0; x < (int32_t)cv_w; x++) {
             int32_t sx = x + g_ox;
             uint32_t n = hash_ui((uint32_t)sx * 73856093u ^ (uint32_t)sy * 19349663u);
-            float vx = ((float)sx - 120.0f) / 160.0f, g;
-            int vj = ((sx + (row & 1) * 14) % 28) == 0;
-            g = 13.0f * (1.0f - 0.35f * (vx * vx + vy * vy)) + (float)(n >> 29) * 0.5f - ((fug || vj) ? 2.5f : 0.0f);
-            cv_px[(uint32_t)y * cv_w + (uint32_t)x] = swap16(RGB((int)(g + 3.0f), (int)(g + 1.2f), (int)g));
+            float fx = (float)sx, fy = (float)sy, w, g;
+            w = fm_sinf(fx * 0.045f + 2.4f * fm_sinf(fy * 0.031f + fx * 0.011f) + 1.3f * fm_sinf(fy * 0.083f - fx * 0.02f));
+            w = w * w;
+            g = 30.0f + 22.0f * w * w + (float)(n >> 29) * 1.2f;
+            cv_px[(uint32_t)y * cv_w + (uint32_t)x] = swap16(RGB((int)(g * 0.80f), (int)(g * 0.84f), (int)(g * 1.22f)));
         }
     }
 }
 
-/* ---- die Lage auf dem Bildschirm ---- */
-#define HEAD_Y1 38
-#define MAP_X0 9.0f
-#define MAP_Y0 40.0f
-#define MAP_X1 231.0f
-#define MAP_Y1 128.0f
-#define ROW_Y0 132.0f
-#define ROW_H 17.0f
-#define READ_Y 203.0f
-#define FOOT_Y 218.0f
-static float row_y(int k) { return ROW_Y0 + (float)k * ROW_H; }
-
-/* der Rahmen: außen rot, innen Gold, kleine Rauten in den Ecken */
-static void frame(void)
+/* ein erhabenes Feld: Fläche, helle Kante oben links, dunkle unten rechts (2 px) */
+static void bevel(float x0, float y0, float x1, float y1, col3 face, float fa, int sunk)
 {
-    static const float C[4][2] = {{6, 6}, {234, 6}, {234, 234}, {6, 234}};
-    int i;
-    s_frame(1.5f, 1.5f, 238.5f, 238.5f, 3.0f, FRAME_RED, 1.0f);
-    s_frame(2.5f, 2.5f, 237.5f, 237.5f, 3.0f, FRAME_RED, 0.8f);
-    s_frame(4.5f, 4.5f, 235.5f, 235.5f, 3.0f, GOLD, 0.85f);
-    for (i = 0; i < 4; i++) {
-        float x = C[i][0], y = C[i][1];
-        if (!vis(x - 4, y - 4, x + 4, y + 4))
-            continue;
-        s_line(x - 3.0f, y, x, y - 3.0f, GOLD_HI, 0.9f);
-        s_line(x, y - 3.0f, x + 3.0f, y, GOLD_HI, 0.9f);
-        s_line(x + 3.0f, y, x, y + 3.0f, GOLD_HI, 0.9f);
-        s_line(x, y + 3.0f, x - 3.0f, y, GOLD_HI, 0.9f);
-    }
+    col3 hi = sunk ? FACE_LO : FACE_HI, lo = sunk ? FACE_HI : FACE_LO;
+    if (!vis(x0 - 1, y0 - 1, x1 + 1, y1 + 1))
+        return;
+    if (fa > 0.0f)
+        s_rect(x0, y0, x1 - x0, y1 - y0, face, fa);
+    s_rect(x0, y0, x1 - x0, 1.0f, hi, 1.0f);
+    s_rect(x0, y0 + 1.0f, x1 - x0 - 1.0f, 1.0f, hi, 0.55f);
+    s_rect(x0, y0, 1.0f, y1 - y0, hi, 1.0f);
+    s_rect(x0 + 1.0f, y0 + 1.0f, 1.0f, y1 - y0 - 2.0f, hi, 0.55f);
+    s_rect(x0, y1 - 1.0f, x1 - x0, 1.0f, lo, 1.0f);
+    s_rect(x0 + 1.0f, y1 - 2.0f, x1 - x0 - 1.0f, 1.0f, lo, 0.6f);
+    s_rect(x1 - 1.0f, y0, 1.0f, y1 - y0, lo, 1.0f);
+    s_rect(x1 - 2.0f, y0 + 1.0f, 1.0f, y1 - y0 - 2.0f, lo, 0.6f);
 }
 
-/* ein Herz (für den Akku und den GROOVE): fill 0..1 von links, sonst nur der Umriss */
+/* ---- die Lage ---- */
+#define VX0 6
+#define VY0 6
+#define VX1 (VX0 + ART_VW)
+#define VY1 (VY0 + ART_VH)
+#define RX0 176.0f
+#define RX1 234.0f
+#define PY0 120.0f
+#define PH 39.0f
+#define MY0 204.0f
+static float panel_x(int k) { return (k & 1) ? 121.0f : 6.0f; }
+static float panel_y(int k) { return PY0 + (float)(k >> 1) * (PH + 2.0f); }
+
+/* ein Herz (Akku, GROOVE): fill 0..1 von links */
 static void heart(float cx, float cy, float s, float fill, col3 on, col3 off)
 {
     int32_t x, y, R = (int32_t)(s * 1.4f) + 2;
@@ -1145,16 +1085,15 @@ static void heart(float cx, float cy, float s, float fill, col3 on, col3 off)
             fx = ((float)x + 0.5f - left) / wd;
             if (fx <= fill) {
                 float t = sat01(((float)y - (cy - s)) / (2.0f * s));
-                px_blend(x - g_ox, y, mix3(rgb3(255, 140, 120), on, t * 0.7f + 0.3f), cov);
+                px_blend(x - g_ox, y, mix3(rgb3(255, 150, 130), on, t * 0.7f + 0.3f), cov);
             } else {
-                px_blend(x - g_ox, y, rgb3(30, 8, 6), cov * 0.9f);
+                px_blend(x - g_ox, y, rgb3(24, 8, 8), cov * 0.9f);
                 if (edge)
                     px_blend(x - g_ox, y, off, (float)edge / 9.0f);
             }
         }
 }
 
-/* der Akku: drei Herzen, stufenlos; leer blinkt er; an USB ein Blitz daneben */
 static int batt_level(void)
 {
 #ifdef PLAT_HOST
@@ -1177,358 +1116,317 @@ static int batt_pct(int lvl)
     raw = raw - 515;
     return raw < 0 ? 0 : raw > 100 ? 100 : (int)raw;
 }
-#define BT_X 196.0f
-static void battery(uint32_t now)
-{
-    int lvl = batt_level(), pct, usb, i;
-    float f;
-    if (lvl < 0 || !vis(BT_X - 10.0f, FOOT_Y, 232.0f, FOOT_Y + 14.0f))
-        return;
-    usb = lvl >= 4;
-    pct = batt_pct(lvl);
-    f = (float)pct / 100.0f * 3.0f;
-    if (!usb && pct < 8 && ((now / 500u) & 1u))
-        f = 0.0f;
-    for (i = 0; i < 3; i++)
-        heart(BT_X + 6.0f + (float)i * 11.5f, FOOT_Y + 7.0f, 4.6f, f - (float)i, RED, FRAME_RED);
-    if (usb) {
-        float bx = BT_X - 8.0f, by = FOOT_Y + 2.0f;
-        s_line(bx + 3.0f, by, bx + 0.5f, by + 5.0f, GOLD_HI, 0.95f);
-        s_line(bx + 0.5f, by + 5.0f, bx + 4.0f, by + 5.0f, GOLD_HI, 0.95f);
-        s_line(bx + 4.0f, by + 5.0f, bx + 1.5f, by + 10.0f, GOLD_HI, 0.95f);
-    }
-}
 
-/* eine Fackel: die Halterung, die Flamme flackert (t: Sekunden), hell mit dem Klang */
-static void torch(float x, float y, float t, float lvl, int frozen)
+/* ---- der Gang ---- */
+/* der Blick: das vorgerenderte Bild, das Licht flackert mit, FREEZE macht es eisig, WRATH rot; beim Raumwechsel
+ * kurz dunkel (ein Schritt in den nächsten Raum) */
+static void view(uint32_t now)
 {
-    float fl = 0.75f + 0.15f * fm_sinf(t * 23.0f + x) + 0.1f * fm_sinf(t * 37.0f + x * 0.3f);
-    col3 fc = frozen ? rgb3(120, 190, 255) : FIRE, core = frozen ? rgb3(220, 240, 255) : rgb3(255, 214, 120);
-    if (!vis(x - 16, y - 18, x + 16, y + 16))
-        return;
-    s_bloom(x, y - 4.0f, 14.0f + 6.0f * lvl, fc, (0.18f + 0.25f * lvl) * fl);
-    s_line(x - 2.0f, y + 2.0f, x + 2.0f, y + 2.0f, rgb3(90, 64, 34), 1.0f);
-    s_line(x, y + 2.0f, x, y + 9.0f, rgb3(90, 64, 34), 1.0f);
-    s_line(x - 3.0f, y + 9.0f, x + 3.0f, y + 9.0f, GOLD_DIM, 1.0f);
-    s_disc(x, y - 1.5f, 2.6f * fl, fc, 0.95f);
-    s_disc(x + 0.4f * fm_sinf(t * 17.0f), y - 4.0f * fl, 1.8f * fl, fc, 0.85f);
-    s_disc(x, y - 1.0f, 1.3f, core, 0.95f);
-}
-
-/* der Nebel: das echte Ausgangssignal als weiche, blasse Schwade (FREEZE: eisblau) */
-static void mist(float x0, float y, float w, float h, int frozen)
-{
-    uint32_t wr = scope_w, start = wr - 900u, i, trig = 0;
-    int j, nn = (int)w;
-    float pk = 0.02f, prev = 0.0f;
-    col3 c = frozen ? rgb3(150, 200, 255) : rgb3(170, 176, 196);
-    if (!vis(x0 - 2, y - h, x0 + w + 2, y + h))
-        return;
-    for (i = 0; i < 300u; i++) {
-        float a = scope_ring[(start + i) % SCOPE_N], b = scope_ring[(start + i + 1u) % SCOPE_N];
-        if (a <= 0.0f && b > 0.0f) {
-            trig = i;
-            break;
-        }
-    }
-    for (j = 0; j < nn; j++) {
-        float v = fabsf_(scope_ring[(start + trig + (uint32_t)j * 4u) % SCOPE_N]);
-        pk = v > pk ? v : pk;
-    }
-    for (j = 0; j < nn; j++) {
-        float v = scope_ring[(start + trig + (uint32_t)j * 4u) % SCOPE_N] / pk, yy = y - v * h * 0.8f;
-        float edge = sat01((float)j / 12.0f) * sat01((float)(nn - j) / 12.0f);
-        if (j)
-            s_line(x0 + (float)j - 1.0f, prev, x0 + (float)j, yy, c, 0.55f * edge);
-        s_line(x0 + (float)j, yy + 1.5f, x0 + (float)j, yy + 3.5f, c, 0.12f * edge);
-        prev = yy;
-    }
-}
-
-/* ---- die Teile der Szene ---- */
-
-/* oben: die Nummer im roten Siegel, der Name des Raums, darunter der Algorithmus; rechts ein Herz, das mit dem
- * GROOVE schlägt */
-static void head(uint32_t now)
-{
-    int a = set.algo;
-    char t[8] = "";
-    if (!vis(6, 6, 234, HEAD_Y1))
-        return;
-    s_rect(12.0f, 11.0f, 22.0f, 17.0f, rgb3(60, 12, 8), 1.0f);
-    s_frame(11.5f, 10.5f, 34.5f, 28.5f, 1.5f, GOLD, 0.9f);
-    if (a + 1 < 10)
-        text_cat(t, "0");
-    int_text(a + 1, t);
-    s_ctext(23.0f, 13.0f, &FONT_SERIF_S, t, C_GOLD_HI, 1);
-    if (groove_page()) {
-        s_ctext(124.0f, 9.0f, &FONT_SERIF_M, GR_STYLE_NAME[set.grv.style], C_GOLD, 2);
-        s_ctext(124.0f, 26.0f, &FONT_SERIF_XS, set.grv.on ? (gr_synced() ? "GROOVE  MIDI SYNC" : "GROOVE  ON")
-                                                          : "GROOVE  OFF  (REC)", C_GOLD_DIM, 1);
-    } else {
-        s_ctext(124.0f, 9.0f, &FONT_SERIF_M, ROOM_NAME[a], C_GOLD, 2);
-        s_ctext(124.0f, 26.0f, &FONT_SERIF_XS, FK_ALGOS[a].name, C_GOLD_DIM, 1);
-    }
-    {   /* das Herz: schlägt mit dem GROOVE, sonst ruhig */
-        float beat = set.grv.on && gr_running() ? sat01(1.0f - (float)(now - ui.beat_at) / 220.0f) : 0.0f;
-        heart(220.0f, 19.0f, 5.0f + 1.3f * beat, set.grv.on ? 1.0f : 0.0f, RED, GOLD_DIM);
-        if (beat > 0.0f)
-            s_bloom(220.0f, 19.0f, 12.0f, RED, 0.3f * beat);
-    }
-    s_line(14.0f, 37.5f, 226.0f, 37.5f, GOLD_DIM, 0.6f);
-}
-
-/* der Boden der Karte: Steinplatten wie auf dem Spielbrett */
-static void floor_tiles(void)
-{
-    int32_t x, y;
-    if (!vis(MAP_X0, MAP_Y0, MAP_X1, MAP_Y1))
-        return;
-    for (y = (int32_t)MAP_Y0; y < (int32_t)MAP_Y1; y++) {
-        if (y < g_y0 || y >= g_y1)
-            continue;
-        for (x = (int32_t)MAP_X0; x < (int32_t)MAP_X1; x++) {
-            uint32_t n;
-            int tx = (x - (int32_t)MAP_X0) % 11, ty = (y - (int32_t)MAP_Y0) % 11;
-            float g;
-            if (x < g_x0 || x >= g_x1)
-                continue;
-            n = hash_ui((uint32_t)(x / 11) * 911u ^ (uint32_t)(y / 11) * 3571u);
-            g = 24.0f + (float)(n >> 29) * 1.4f + (float)(hash_ui((uint32_t)x * 7919u ^ (uint32_t)y * 104729u) >> 30);
-            if (tx == 0 || ty == 0)
-                g = 15.0f;
-            px_put(x - g_ox, y, rgb3(g + 4.0f, g + 1.5f, g - 1.0f));
-        }
-    }
-    s_frame(MAP_X0 - 0.5f, MAP_Y0 - 0.5f, MAP_X1 + 0.5f, MAP_Y1 + 0.5f, 0.0f, rgb3(70, 54, 40), 1.0f);
-}
-
-/* der Raum: eine Kammer mit zwei Fackeln, der Gargoyle in der Mitte (die Augen glühen mit dem Klang), Gänge zu den
- * Nachbarräumen, der Nebel ist das Signal */
-static void chamber(uint32_t now)
-{
-    float t = (float)now * 0.001f, lvl = sat01(fk_level() * 2.5f), env = fk_env(), pump = gr_pump();
+    int sc = scene_now();
+    const uint8_t *src = ART_SCN[sc];
+    const uint16_t *pal = ART_SCN_PAL[sc];
+    float t = (float)now * 0.001f, lvl = sat01(fk_level() * 2.5f);
+    float beat = set.grv.on && gr_running() ? sat01(1.0f - (float)(now - ui.beat_at) / 180.0f) : 0.0f;
+    float fl = 0.93f + 0.05f * fm_sinf(t * 17.0f) + 0.03f * fm_sinf(t * 31.0f) + 0.10f * lvl + 0.10f * beat;
+    float wr = (float)set.wrath / 127.0f, tr = 1.0f;
     int frozen = fk_frozen();
-    col3 wall = frozen ? rgb3(150, 196, 230) : GOLD;
-    float cx0 = 62.0f, cy0 = 47.0f, cx1 = 178.0f, cy1 = 121.0f;
-    /* die Gänge und die Nachbarräume (dunkel) */
-    s_rect(MAP_X0 + 1.0f, 78.0f, cx0 - MAP_X0 - 1.0f, 12.0f, rgb3(10, 8, 6), 0.55f);
-    s_rect(cx1, 78.0f, MAP_X1 - cx1 - 1.0f, 12.0f, rgb3(10, 8, 6), 0.55f);
-    s_frame(14.5f, 52.5f, 44.5f, 115.5f, 0.0f, GOLD_DIM, 0.55f);
-    s_frame(195.5f, 52.5f, 225.5f, 115.5f, 0.0f, GOLD_DIM, 0.55f);
-    {
-        char a[4] = "", b[4] = "";
-        int pa = (set.algo + FK_NALGO - 1) % FK_NALGO, nb = (set.algo + 1) % FK_NALGO;
-        int_text(pa + 1, a);
-        int_text(nb + 1, b);
-        s_ctext(29.5f, 58.0f, &FONT_SERIF_XS, a, C_GOLD_DIM, 1);
-        s_ctext(210.5f, 58.0f, &FONT_SERIF_XS, b, C_GOLD_DIM, 1);
+    int32_t x, y, xa, xb, ya, yb;
+    if (!vis(VX0 - 3, VY0 - 3, VX1 + 3, VY1 + 3))
+        return;
+    if (now - ui.trans_at < 420u) {     /* ein Schritt: erst dunkel, dann wieder hell */
+        float u = (float)(now - ui.trans_at) / 420.0f;
+        tr = u < 0.35f ? 1.0f - u / 0.35f : (u - 0.35f) / 0.65f;
+        tr = tr * tr;
     }
-    /* die Kammer: ihr Boden im Fackellicht, die Wände doppelt */
-    s_rect(cx0, cy0, cx1 - cx0, cy1 - cy0, rgb3(10, 7, 5), 0.35f);
-    s_bloom(120.0f, 86.0f, 48.0f, frozen ? rgb3(90, 150, 220) : FIRE, 0.10f + 0.22f * lvl);
-    s_frame(cx0 + 0.5f, cy0 + 0.5f, cx1 - 0.5f, cy1 - 0.5f, 0.0f, wall, 0.9f);
-    s_frame(cx0 + 2.5f, cy0 + 2.5f, cx1 - 2.5f, cy1 - 2.5f, 0.0f, GOLD_DIM, 0.6f);
-    torch(cx0 + 10.0f, cy0 + 12.0f, t, lvl, frozen);
-    torch(cx1 - 10.0f, cy0 + 12.0f, t + 1.7f, lvl, frozen);
-    /* der Gargoyle: duckt sich mit der Pumpe */
-    gargoyle(120.0f, 53.0f + 2.0f * pump, 0.21f, rgb3(16, 12, 10), 0.95f, GOLD_DIM, 0.75f);
-    garg_eyes(120.0f, 53.0f + 2.0f * pump, 0.21f, 1.0f, 0.25f + 0.75f * sat01(env * 0.6f + lvl));
-    mist(cx0 + 4.0f, 108.0f, cx1 - cx0 - 8.0f, 9.0f, frozen);
-    if (ui.vol) {                        /* VOL: die Pegel als zwei rote Säulen in den Gängen */
+    xa = VX0 > g_x0 ? VX0 : g_x0;
+    xb = VX1 < g_x1 ? VX1 : g_x1;
+    ya = VY0 > g_y0 ? VY0 : g_y0;
+    yb = VY1 < g_y1 ? VY1 : g_y1;
+    {
+        int32_t kq = (int32_t)(fl * tr * 256.0f), kr = (int32_t)((fl * tr) * (256.0f + 70.0f * wr)), kb = kq;
+        frozen = 0;                      /* (FREEZE hat sein eigenes Bild: das Wasser) */
+        for (y = ya; y < yb; y++) {
+            const uint8_t *row = src + (uint32_t)(y - VY0) * ART_VW;
+            for (x = xa; x < xb; x++) {
+                uint16_t c = pal[row[x - VX0]];
+                int32_t r = (int32_t)(c >> 11), g = (int32_t)((c >> 5) & 63u), b = (int32_t)(c & 31u);
+                if (frozen) {            /* eisig: zur Helligkeit hin, blau */
+                    int32_t l = (r * 2 + g + b * 2) / 5;
+                    r = (r + l) / 2;
+                    g = (g + l * 2) / 2;
+                    b = (b + l * 3) / 2;
+                }
+                r = (r * kr) >> 8;
+                g = (g * (frozen ? kq : (int32_t)((float)kq * (1.0f - 0.25f * wr)))) >> 8;
+                b = (b * (frozen ? (kb * 5) / 4 : (int32_t)((float)kb * (1.0f - 0.3f * wr)))) >> 8;
+                r = r > 31 ? 31 : r;
+                g = g > 63 ? 63 : g;
+                b = b > 31 ? 31 : b;
+                cv_px[(uint32_t)(y + cv_oy) * cv_w + (uint32_t)(x - g_ox)] = swap16((uint16_t)(r << 11 | g << 5 | b));
+            }
+        }
+    }
+    if (ui.vol) {                        /* VOL: zwei Säulen links und rechts im Bild */
         int c, clip = now < ui.clip_until;
         for (c = 0; c < 2; c++) {
-            float x = c ? 203.0f : 22.0f, h = 58.0f * ui.mt[c];
-            s_rect(x, 56.0f, 15.0f, 58.0f, rgb3(26, 6, 6), 1.0f);
-            s_rect(x, 114.0f - h, 15.0f, h, clip ? rgb3(255, 60, 40) : RED, 0.9f);
-            s_frame(x - 0.5f, 55.5f, x + 15.5f, 114.5f, 0.0f, clip ? RED : GOLD_DIM, 0.9f);
+            float x0 = c ? (float)VX1 - 10.0f : (float)VX0 + 4.0f, h = 80.0f * ui.mt[c];
+            s_rect(x0, (float)VY0 + 14.0f, 6.0f, 80.0f, rgb3(10, 8, 12), 0.85f);
+            s_rect(x0, (float)VY0 + 94.0f - h, 6.0f, h, clip ? rgb3(255, 60, 40) : rgb3(90, 200, 90), 0.95f);
         }
     }
+    /* der Rahmen um den Blick: eingelassen */
+    s_rect((float)VX0 - 2.0f, (float)VY0 - 2.0f, (float)ART_VW + 4.0f, 2.0f, FACE_LO, 1.0f);
+    s_rect((float)VX0 - 2.0f, (float)VY0 - 2.0f, 2.0f, (float)ART_VH + 4.0f, FACE_LO, 1.0f);
+    s_rect((float)VX0 - 2.0f, (float)VY1, (float)ART_VW + 4.0f, 2.0f, FACE_HI, 0.9f);
+    s_rect((float)VX1, (float)VY0 - 2.0f, 2.0f, (float)ART_VH + 4.0f, FACE_HI, 0.9f);
 }
 
-/* der Dungeon-Plan: alle 22 Räume, der aktuelle brennt */
-static void plan(void)
+/* ---- die Kuppel: schwarzer Marmor, goldener Rand; die Nummer des Raums, im GROOVE die 16 Schritte ---- */
+static void dome(uint32_t now)
 {
-    int a;
-    for (a = 0; a < FK_NALGO; a++) {
-        int row = a < 9 ? 0 : a < 18 ? 1 : 2, col = a < 18 ? a % 9 : a - 18;
-        float x = 14.0f + (float)col * 24.0f + (row == 2 ? 60.0f : 0.0f), y = 46.0f + (float)row * 27.0f;
-        int cur = a == set.algo;
-        char t[4] = "";
-        int_text(a + 1, t);
-        if (!vis(x - 4, y - 4, x + 26, y + 26))
-            continue;
-        if (cur) {
-            s_bloom(x + 10.5f, y + 10.5f, 18.0f, FIRE, 0.35f);
-            s_rect(x, y, 21.0f, 21.0f, rgb3(232, 160, 64), 1.0f);
-            s_frame(x - 0.5f, y - 0.5f, x + 21.5f, y + 21.5f, 0.0f, GOLD_HI, 1.0f);
-            s_ctext(x + 10.5f, y + 5.0f, &FONT_SERIF_S, t, RGB(28, 16, 8), 0);
-        } else {
-            s_rect(x, y, 21.0f, 21.0f, rgb3(18, 14, 11), 1.0f);
-            s_frame(x - 0.5f, y - 0.5f, x + 21.5f, y + 21.5f, 0.0f, rgb3(80, 62, 44), 1.0f);
-            s_ctext(x + 10.5f, y + 6.0f, &FONT_SERIF_XS, t, C_GOLD_DIM, 0);
-        }
-    }
-}
-
-/* GROOVE: der Verlauf wie ein EKG, rot über dem Stein, die 16 Schritte darunter */
-static void groove_view(void)
-{
-    int i, n = (int)(sizeof ui.ecg / sizeof ui.ecg[0]), st = gr_step();
-    float x0 = 18.0f, w = 204.0f, y = 84.0f, prev = y;
-    for (i = 0; i < n; i++) {   /* ein Schlag: hoch, dann ein Stück unter die Linie (wie ein QRS) */
-        float v = ui.ecg[(ui.ecg_w + (uint32_t)i) % (uint32_t)n], x = x0 + (float)i * w / (float)(n - 1);
-        float vp = i ? ui.ecg[(ui.ecg_w + (uint32_t)i - 1u) % (uint32_t)n] : 0.0f;
-        float yy = y - (v - 1.6f * vp) * 30.0f, fade = sat01((float)i / 20.0f);
-        if (i) {
-            s_line(x - w / (float)(n - 1), prev, x, yy, RED, 0.35f * fade);
-            s_line(x - w / (float)(n - 1), prev - 0.8f, x, yy - 0.8f, rgb3(255, 140, 120), 0.9f * fade);
-        }
-        prev = yy;
-    }
-    s_bloom(x0 + w, prev, 8.0f, RED, 0.5f);
-    for (i = 0; i < 16; i++) {
-        float x = 25.0f + (float)i * 12.7f;
-        int cur = i == st;
-        s_disc(x, 118.0f, cur ? 2.4f : 1.5f, cur ? FIRE : (i % 4 ? GOLD_DIM : GOLD), cur ? 1.0f : 0.8f);
-        if (cur)
-            s_bloom(x, 118.0f, 7.0f, FIRE, 0.5f);
-    }
-    if (!set.grv.on)
-        s_ctext(120.0f, 64.0f, &FONT_SERIF_S, "PRESS REC", C_GOLD_DIM, 1);
-}
-
-static void map_area(uint32_t now)
-{
-    if (!vis(MAP_X0 - 1, MAP_Y0 - 1, MAP_X1 + 1, MAP_Y1 + 1))
+    float cx = (RX0 + RX1) * 0.5f, cy = 46.0f, r = 27.0f, wr = (float)set.wrath / 127.0f;
+    int32_t x, y, i, st = gr_step();
+    char t[8] = "";
+    if (!vis(RX0 - 2, 6, RX1 + 2, 50))
         return;
-    floor_tiles();
-    if (groove_page())
-        groove_view();
-    else if (now < ui.plan_until)
-        plan();
-    else
-        chamber(now);
+    for (y = (int32_t)(cy - r - 2.0f); y < (int32_t)cy; y++)   /* die Kuppel: Marmor mit Glanz */
+        for (x = (int32_t)(cx - r - 2.0f); x <= (int32_t)(cx + r + 2.0f); x++) {
+            float dx = (float)x + 0.5f - cx, dy = (float)y + 0.5f - cy, d = fm_sqrtf(dx * dx + dy * dy), cov, g;
+            float sw = fm_sinf(dx * 0.35f + 3.0f * fm_sinf(dy * 0.22f + dx * 0.05f));
+            if (d > r + 0.5f || y < g_y0 || y >= g_y1 || x < g_x0 || x >= g_x1)
+                continue;
+            cov = sat01(r - d + 0.5f);
+            g = 10.0f + 14.0f * sw * sw + 30.0f * sat01(1.0f - fm_sqrtf((dx + 8.0f) * (dx + 8.0f) + (dy + 16.0f) * (dy + 16.0f)) / 14.0f);
+            px_blend(x - g_ox, y, rgb3(g + 40.0f * wr, g, g * 1.15f), cov);
+        }
+    s_arc(cx, cy, r, 2.4f, -90.0f, 90.0f, GOLD, 1.0f, 0.0f);
+    s_arc(cx, cy, r - 2.6f, 0.9f, -90.0f, 90.0f, GOLD_DIM, 0.9f, 0.0f);
+    if (wr > 0.02f)
+        s_arc(cx, cy, r, 2.0f, -90.0f, -90.0f + 180.0f * wr, RED, 0.9f, 2.5f);
+    s_rect(cx - r - 3.0f, cy, 2.0f * r + 6.0f, 3.0f, GOLD, 1.0f);
+    s_rect(cx - r - 3.0f, cy + 3.0f, 2.0f * r + 6.0f, 1.0f, GOLD_DIM, 1.0f);
+    for (i = 0; i < 16; i++) {           /* die Runen am Rand: im GROOVE die Schritte */
+        float a = (-84.0f + (float)i * 11.2f) * 0.0174533f, rx = cx + fm_sinf(a) * (r - 6.0f), ry = cy - fm_cosf(a) * (r - 6.0f);
+        int cur = i == st && set.grv.on;
+        if (ry > cy - 2.0f)
+            continue;
+        s_disc(rx, ry, cur ? 1.9f : 0.9f, cur ? FIRE : (i % 4 ? GOLD_DIM : GOLD), 1.0f);
+        if (cur)
+            s_bloom(rx, ry, 6.0f, FIRE, 0.6f);
+    }
+    if (ui.page == PG_GROOVE || ui.page == PG_SETUP) {
+        float beat = set.grv.on && gr_running() ? sat01(1.0f - (float)(now - ui.beat_at) / 220.0f) : 0.0f;
+        heart(cx, cy - 11.0f, 7.0f + 1.6f * beat, set.grv.on ? 1.0f : 0.0f, RED, GOLD_DIM);
+        if (beat > 0.0f)
+            s_bloom(cx, cy - 11.0f, 14.0f, RED, 0.35f * beat);
+    } else {
+        int_text(set.algo + 1, t);
+        s_ctext(cx, cy - 20.0f, &FONT_SERIF_M, t, C_GOLD_HI, 1);
+    }
 }
 
-/* ein Regler: der Edelstein in seiner Heldenfarbe, der Name, der Balken (der Sweetspot als heller Strich), der Wert */
-static void row(int k, uint32_t now)
+/* ---- rechts: die Seite (ein Knopf wie CAMP), HOLD, FREEZE, die Oktave, drei Herzen ---- */
+static void side(uint32_t now)
 {
-    float y = row_y(k), yc = y + 8.0f, bx0 = 92.0f, bx1 = 184.0f;
+    float cx = (RX0 + RX1) * 0.5f;
+    char t[12] = "";
+    int lvl, i;
+    if (vis(RX0, 52, RX1, 69)) {
+        bevel(RX0, 52.0f, RX1, 68.0f, FACE, 1.0f, 0);
+        s_ctext(cx, 54.0f, &FONT_SERIF_S, ui.page == PG_SETUP ? "SETUP" : PAGE_NAME[ui.page], C_GOLD, 1);
+    }
+    if (!vis(RX0, 71, RX1, 117))
+        return;
+    bevel(RX0, 72.0f, RX1, 116.0f, rgb3(14, 14, 22), 1.0f, 1);
+    s_disc(RX0 + 8.0f, 81.0f, 2.4f, set.hold ? RED : RED_DIM, 1.0f);
+    if (set.hold)
+        s_bloom(RX0 + 8.0f, 81.0f, 7.0f, RED, 0.5f);
+    s_text(RX0 + 14.0f, 75.0f, &FONT_XS, "HOLD", set.hold ? C_TXT : C_TXT_DIM, 1);
+    if (fk_frozen() || fk_eco_on()) {
+        s_text(RX0 + 5.0f, 87.0f, &FONT_XS, fk_frozen() ? "FREEZE" : "ECO", fk_frozen() ? RGB(150, 210, 255) : C_RED, 1);
+    } else {
+        text_cat(t, "OCT ");
+        if (set.oct > 2)
+            text_cat(t, "+");
+        int_text((int)set.oct - 2, t);
+        s_text(RX0 + 5.0f, 87.0f, &FONT_XS, t, set.oct != 2 ? C_GOLD_HI : C_TXT_DIM, 1);
+    }
+    lvl = batt_level();
+    if (lvl >= 0) {                      /* der Akku: drei Herzen, stufenlos; leer blinken sie; an USB ein Blitz */
+        int usb = lvl >= 4, pct = batt_pct(lvl);
+        float f = (float)pct / 100.0f * 3.0f;
+        if (!usb && pct < 8 && ((now / 500u) & 1u))
+            f = 0.0f;
+        for (i = 0; i < 3; i++)
+            heart(cx - 13.0f + (float)i * 13.0f + (usb ? 4.0f : 0.0f), 106.0f, 5.0f, f - (float)i, RED, rgb3(110, 30, 24));
+        if (usb) {
+            float bx = RX0 + 3.0f, by = 101.0f;
+            s_line(bx + 3.0f, by, bx + 0.5f, by + 5.0f, GOLD_HI, 0.95f);
+            s_line(bx + 0.5f, by + 5.0f, bx + 4.0f, by + 5.0f, GOLD_HI, 0.95f);
+            s_line(bx + 4.0f, by + 5.0f, bx + 1.5f, by + 10.0f, GOLD_HI, 0.95f);
+        }
+    }
+}
+
+/* ein kleines Bild je Held: Schwert, Axt, Bogen, Stab (Stahl auf seiner Farbe) */
+static void hero_icon(int k, float x, float y, int hot)
+{
+    col3 st = rgb3(214, 218, 230), dk = rgb3(60, 44, 30), h = HERO[k];
+    float cx = x + 15.0f, cy = y + 15.0f;
+    s_rect(x, y, 30.0f, 30.0f, rgb3(16, 14, 22), 1.0f);
+    s_bloom(cx, cy, 20.0f, h, hot ? 0.75f : 0.45f);
+    switch (k) {
+    case 0:                              /* das Schwert */
+        s_line(cx - 7.0f, cy + 7.0f, cx + 7.0f, cy - 7.0f, st, 1.0f);
+        s_line(cx - 6.0f, cy + 7.0f, cx + 8.0f, cy - 7.0f, rgb3(150, 156, 170), 1.0f);
+        s_line(cx - 9.0f, cy + 3.0f, cx - 3.0f, cy + 9.0f, GOLD, 1.0f);
+        s_line(cx - 7.5f, cy + 7.5f, cx - 10.0f, cy + 10.0f, dk, 1.0f);
+        break;
+    case 1:                              /* die Axt */
+        s_line(cx - 6.0f, cy + 9.0f, cx + 4.0f, cy - 8.0f, dk, 1.0f);
+        s_line(cx - 5.0f, cy + 9.0f, cx + 5.0f, cy - 8.0f, rgb3(110, 80, 50), 1.0f);
+        s_disc(cx + 4.0f, cy - 5.0f, 5.0f, st, 1.0f);
+        s_disc(cx + 1.0f, cy - 3.0f, 3.0f, rgb3(16, 14, 22), 1.0f);
+        break;
+    case 2:                              /* der Bogen */
+        s_arc(cx + 4.0f, cy, 10.0f, 1.6f, 200.0f, 340.0f, rgb3(140, 100, 60), 1.0f, 0.0f);
+        s_line(cx - 5.4f, cy - 3.5f, cx - 5.4f, cy + 3.5f, st, 0.0f);
+        s_line(cx - 4.0f, cy - 9.0f, cx - 4.0f, cy + 9.0f, st, 0.8f);
+        s_line(cx - 4.0f, cy, cx + 8.0f, cy, st, 1.0f);
+        s_line(cx + 8.0f, cy, cx + 5.0f, cy - 2.5f, st, 1.0f);
+        s_line(cx + 8.0f, cy, cx + 5.0f, cy + 2.5f, st, 1.0f);
+        break;
+    default:                             /* der Stab mit der Kugel */
+        s_line(cx - 5.0f, cy + 10.0f, cx + 3.0f, cy - 5.0f, rgb3(120, 86, 52), 1.0f);
+        s_bloom(cx + 4.0f, cy - 7.0f, 7.0f, rgb3(150, 200, 255), 0.7f);
+        s_disc(cx + 4.0f, cy - 7.0f, 3.2f, rgb3(170, 220, 255), 1.0f);
+        s_disc(cx + 3.0f, cy - 8.0f, 1.1f, rgb3(255, 255, 255), 0.9f);
+        break;
+    }
+    s_rect(x, y, 30.0f, 1.0f, FACE_LO, 1.0f);
+    s_rect(x, y, 1.0f, 30.0f, FACE_LO, 1.0f);
+    s_rect(x, y + 29.0f, 30.0f, 1.0f, FACE_HI, 1.0f);
+    s_rect(x + 29.0f, y, 1.0f, 30.0f, FACE_HI, 1.0f);
+}
+
+/* ein Held = ein Regler: Bild, Name, der Wert, der Balken in seiner Farbe (der helle Strich: der Sweetspot) */
+static void hero_panel(int k, uint32_t now)
+{
+    float x = panel_x(k), y = panel_y(k), bx0 = x + 40.0f, bx1 = x + 109.0f;
     int hot = ui.knob_at[k] && now - ui.knob_at[k] < 800u, v = *kval(ui.page, k);
     col3 h = HERO[k];
     char t[24];
-    uint16_t lc;
-    if (!vis(8, y, 232, y + ROW_H))
+    if (!vis(x, y, x + 113.0f, y + PH))
         return;
-    if (hot)
-        s_rect(10.0f, y + 1.0f, 220.0f, ROW_H - 2.0f, h, 0.10f);
-    s_disc(16.0f, yc, 3.4f, mix3(h, rgb3(255, 255, 255), 0.25f), 1.0f);
-    s_disc(15.0f, yc - 1.0f, 1.2f, rgb3(255, 255, 255), 0.6f);
-    if (hot)
-        s_bloom(16.0f, yc, 9.0f, h, 0.45f);
-    lc = c565(hot ? mix3(h, rgb3(255, 255, 255), 0.35f) : h);
-    s_text(25.0f, y + 2.0f, &FONT_SERIF_S, kname(ui.page, k), lc, 1);
-    s_rect(bx0, yc - 3.0f, bx1 - bx0, 6.0f, rgb3(36, 28, 22), 1.0f);
-    s_rect(bx0, yc - 3.0f, (bx1 - bx0) * (float)v / 127.0f, 6.0f, h, hot ? 1.0f : 0.85f);
-    s_rect(bx0, yc - 3.0f, (bx1 - bx0) * (float)v / 127.0f, 1.0f, rgb3(255, 255, 255), 0.25f);
-    s_frame(bx0 - 0.5f, yc - 3.5f, bx1 + 0.5f, yc + 3.5f, 0.0f, rgb3(84, 66, 48), 1.0f);
+    bevel(x, y, x + 113.0f, y + PH, hot ? mix3(FACE, h, 0.18f) : FACE, 1.0f, 0);
+    hero_icon(k, x + 5.0f, y + 4.5f, hot);
+    s_text(bx0, y + 3.0f, &FONT_B, kname(ui.page, k), hot ? C_TXT : RGB(232, 234, 246), 1);
+    s_rtext(bx1, y + 20.0f, &FONT_XS, kvalue_text(ui.page, k, t), hot ? C_GOLD_HI : C_GOLD, 1);
+    s_rect(bx0, y + 31.0f, bx1 - bx0, 5.0f, rgb3(14, 12, 20), 1.0f);
+    s_rect(bx0, y + 31.0f, (bx1 - bx0) * (float)v / 127.0f, 5.0f, h, 1.0f);
+    s_rect(bx0, y + 31.0f, (bx1 - bx0) * (float)v / 127.0f, 1.0f, mix3(h, rgb3(255, 255, 255), 0.5f), 0.8f);
+    s_rect(bx0, y + 35.0f, bx1 - bx0, 1.0f, FACE_HI, 0.6f);
     if (ksweet(ui.page, k)) {
         float sx = bx0 + (bx1 - bx0) * 64.0f / 127.0f;
-        s_line(sx, yc - 6.0f, sx, yc + 6.0f, rgb3(243, 230, 200), v == 64 ? 1.0f : 0.6f);
+        s_rect(sx, y + 29.0f, 1.0f, 8.0f, rgb3(250, 240, 210), v == 64 ? 1.0f : 0.55f);
     }
-    s_rtext(229.0f, y + 4.0f, &FONT_SERIF_XS, kvalue_text(ui.page, k, t), hot ? C_GOLD_HI : C_GOLD_DIM, 1);
+    if (!hot && PAGE_SRC[ui.page] == SRC_M)
+        s_text(bx0, y + 20.0f, &FONT_XS, HERO_CLASS[k], C_TXT_DIM, 0);
+    if (hot) {
+        s_rect(x + 2.0f, y + 2.0f, 109.0f, 1.0f, h, 0.9f);
+        s_rect(x + 2.0f, y + PH - 3.0f, 109.0f, 1.0f, h, 0.9f);
+    }
 }
 
-/* die Anzeige: der Regler, der gerade gedreht wird (mit Richtung), sonst eine Meldung, sonst die Seite */
-static void readout(uint32_t now)
+/* ---- das Nachrichtenfeld: zwei Zeilen, weiß auf schwarz ---- */
+static void message(uint32_t now)
 {
     char l[48] = "", v[24];
-    int sm = snap_mode();
-    if (!vis(8, READ_Y - 2, 232, READ_Y + 13))
+    int sm = snap_mode(), wr = (int)set.wrath;
+    if (!vis(6, MY0, 234, 235))
         return;
-    s_line(14.0f, READ_Y - 1.5f, 226.0f, READ_Y - 1.5f, GOLD_DIM, 0.5f);
+    bevel(6.0f, MY0, 234.0f, 235.0f, rgb3(4, 4, 8), 1.0f, 1);
+    /* Zeile 1: der Raum (oder eine Meldung) */
+    if (now < ui.msg_until) {
+        s_text(11.0f, MY0 + 4.0f, &FONT_XS, ui.msg[0], C_GOLD_HI, 0);
+        s_text(11.0f + (float)text_w(&FONT_XS, ui.msg[0]) + 6.0f, MY0 + 4.0f, &FONT_XS, ui.msg[1], C_TXT, 0);
+    } else if (ui.page == PG_GROOVE || ui.page == PG_SETUP) {
+        text_cat(l, "GROOVE ");
+        text_cat(l, GR_STYLE_NAME[set.grv.style]);
+        s_text(11.0f, MY0 + 4.0f, &FONT_XS, l, C_GOLD, 0);
+        s_rtext(229.0f, MY0 + 4.0f, &FONT_XS, set.grv.on ? (gr_synced() ? "MIDI SYNC" : "ON") : "OFF - PRESS REC",
+                set.grv.on ? RGB(120, 230, 120) : C_TXT_DIM, 0);
+    } else {
+        if (set.algo + 1 < 10)
+            text_cat(l, "0");
+        int_text(set.algo + 1, l);
+        text_cat(l, " ");
+        text_cat(l, ROOM_NAME[set.algo]);
+        s_text(11.0f, MY0 + 4.0f, &FONT_XS, l, C_GOLD, 0);
+        s_rtext(229.0f, MY0 + 4.0f, &FONT_XS, FK_ALGOS[set.algo].name, C_TXT_DIM, 0);
+    }
+    /* Zeile 2: der Regler, der gerade gedreht wird; Snapshots; WRATH */
+    l[0] = 0;
     if (sm) {
         int i;
-        s_ctext(80.0f, READ_Y + 1.0f, &FONT_SERIF_XS, sm == 2 ? "STORE SNAP" : "LOAD SNAP", C_GOLD, 1);
+        s_text(11.0f, MY0 + 17.0f, &FONT_XS, sm == 2 ? "STORE SNAPSHOT:" : "LOAD SNAPSHOT:", C_TXT, 0);
         for (i = 0; i < NSNAP; i++) {
-            float x = 132.0f + (float)i * 9.0f;
+            float x = 130.0f + (float)i * 12.0f;
             int cur = set.snap == (uint8_t)(i + 1), used = set.snaps[i].used;
-            s_disc(x, READ_Y + 6.0f, 2.4f, cur && used ? RED : used ? GOLD : rgb3(44, 36, 26), 1.0f);
+            s_disc(x, MY0 + 23.0f, 2.6f, cur && used ? RED : used ? GOLD : rgb3(50, 50, 70), 1.0f);
             if (cur && used)
-                s_bloom(x, READ_Y + 6.0f, 6.0f, RED, 0.45f);
+                s_bloom(x, MY0 + 23.0f, 6.0f, RED, 0.45f);
         }
+        return;
+    }
+    if (now < ui.wrath_until) {
+        text_cat(l, "WRATH ");
+        int_text((wr * 100 + 63) / 127, l);
+        text_cat(l, "%  ");
+        text_cat(l, wr == 0 ? "IT SLEEPS" : wr < 40 ? "IT STIRS" : wr < 80 ? "IT AWAKENS" : wr < 120 ? "IT RAGES" : "FULL WRATH");
+        s_text(11.0f, MY0 + 17.0f, &FONT_XS, l, RGB(255, 110, 80), 0);
         return;
     }
     if (now < ui.read_until && ui.read_k >= 0) {
         int k = ui.read_k, val = *kval(ui.page, k);
         text_cat(l, kname(ui.page, k));
-        text_cat(l, "  ");
+        text_cat(l, " ");
         text_cat(l, kvalue_text(ui.page, k, v));
-        if (PAGE_SRC[ui.page] == SRC_M) {        /* die Richtung in Worten */
+        if (PAGE_SRC[ui.page] == SRC_M) {
             text_cat(l, "  ");
             text_cat(l, val == 64 ? "SWEETSPOT" : MAC_RANGE[k][val > 64]);
         }
-        s_ctext(120.0f, READ_Y + 1.0f, &FONT_SERIF_XS, l, c565(HERO[k]), 1);
+        s_text(11.0f, MY0 + 17.0f, &FONT_XS, l, c565(HERO[k]), 0);
         return;
     }
-    if (now < ui.msg_until) {
-        text_cat(l, ui.msg[0]);
-        if (ui.msg[1][0]) {
-            text_cat(l, "  ");
-            text_cat(l, ui.msg[1]);
-        }
-        s_ctext(120.0f, READ_Y + 1.0f, &FONT_SERIF_XS, l, C_GOLD_HI, 1);
-        return;
+    if (set.wrath) {
+        text_cat(l, "WRATH ");
+        int_text((wr * 100 + 63) / 127, l);
+        text_cat(l, "%");
+        s_text(11.0f, MY0 + 17.0f, &FONT_XS, l, RGB(220, 90, 70), 0);
+    } else {
+        s_text(11.0f, MY0 + 17.0f, &FONT_XS, "SELECT: WRATH  PRESET: ROOM", C_TXT_DIM, 0);
     }
-    text_cat(l, PAGE_NAME[ui.page]);
-    s_ctext(120.0f, READ_Y + 1.0f, &FONT_SERIF_XS, l, C_GOLD_DIM, 1);
-}
-
-/* unten: HOLD und FREEZE als LEDs, die Oktave, der Akku (drei Herzen) */
-static void foot(uint32_t now)
-{
-    int hold = set.hold, frz = fk_frozen();
-    char t[12] = "";
-    if (!vis(8, FOOT_Y - 1, 232, FOOT_Y + 15))
-        return;
-    s_disc(15.0f, FOOT_Y + 7.0f, 2.4f, hold ? RED : RED_DIM, 1.0f);
-    if (hold)
-        s_bloom(15.0f, FOOT_Y + 7.0f, 7.0f, RED, 0.5f);
-    s_text(21.0f, FOOT_Y + 2.0f, &FONT_SERIF_XS, "HOLD", hold ? C_RED : C_GOLD_DIM, 1);
-    if (frz || fk_eco_on()) {
-        s_disc(55.0f, FOOT_Y + 7.0f, 2.4f, frz ? rgb3(120, 190, 255) : RED, 1.0f);
-        s_bloom(55.0f, FOOT_Y + 7.0f, 7.0f, frz ? rgb3(120, 190, 255) : RED, 0.5f);
-        s_text(61.0f, FOOT_Y + 2.0f, &FONT_SERIF_XS, frz ? "FREEZE" : "ECO", frz ? RGB(150, 200, 255) : C_RED, 1);
-    }
-    text_cat(t, "OCT ");
-    if (set.oct > 2)
-        text_cat(t, "+");
-    int_text((int)set.oct - 2, t);
-    s_ctext(140.0f, FOOT_Y + 2.0f, &FONT_SERIF_XS, t, set.oct != 2 ? C_RED : C_GOLD_DIM, 1);
-    battery(now);
 }
 
 /* ---- die ganze Szene ---- */
 static void scene(uint32_t now)
 {
     int k;
-    frame();
-    head(now);
-    map_area(now);
+    view(now);
+    dome(now);
+    side(now);
     for (k = 0; k < 4; k++)
-        row(k, now);
-    readout(now);
-    foot(now);
+        hero_panel(k, now);
+    message(now);
 }
 
-/* einen Ausschnitt des Bildschirms neu zeichnen */
 static void region(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 {
     int32_t h = y1 - y0, w = x1 - x0;
     if (w <= 0 || h <= 0)
         return;
-    if ((uint32_t)(w * h) > APP_CANVAS_PX) {      /* zu groß: in Streifen */
+    if ((uint32_t)(w * h) > APP_CANVAS_PX) {
         int32_t step = (int32_t)(APP_CANVAS_PX / (uint32_t)w), y;
         for (y = y0; y < y1; y += step)
             region(x0, y, x1, y + step < y1 ? y + step : y1);
@@ -1555,69 +1453,83 @@ static void draw(uint32_t m)
         region(0, 120, 240, 240);
         return;
     }
-    if (m & R_HEAD)
-        region(6, 6, 234, HEAD_Y1 + 1);
     if (m & R_MAP)
-        region((int32_t)MAP_X0 - 1, (int32_t)MAP_Y0 - 1, (int32_t)MAP_X1 + 2, (int32_t)MAP_Y1 + 2);
+        region(VX0 - 2, VY0 - 2, VX1 + 2, VY1 + 2);
+    if (m & R_HEAD)
+        region((int32_t)RX0 - 2, 4, (int32_t)RX1 + 2, 70);
+    if (m & R_FOOT)
+        region((int32_t)RX0 - 1, 71, (int32_t)RX1 + 1, 117);
     for (k = 0; k < 4; k++)
         if (m & ((uint32_t)R_ROW0 << k))
-            region(8, (int32_t)row_y(k), 232, (int32_t)(row_y(k) + ROW_H));
+            region((int32_t)panel_x(k), (int32_t)panel_y(k), (int32_t)panel_x(k) + 113, (int32_t)(panel_y(k) + PH));
     if (m & R_READ)
-        region(8, (int32_t)READ_Y - 3, 232, (int32_t)READ_Y + 14);
-    if (m & R_FOOT)
-        region(8, (int32_t)FOOT_Y - 1, 232, (int32_t)FOOT_Y + 15);
+        region(6, (int32_t)MY0, 234, 236);
 }
 
-/* ---- die Eröffnung: schwarz; GARGOYLE erscheint; darüber öffnen sich zwei glühende Augen; ein Blitz, und für einen
- * Augenblick sieht man die Silhouette des Gargoyle; sie bleibt schwach im Dunkeln stehen ---- */
-#define INTRO_MS 3600u
-#define IN_SC 0.55f
-#define IN_Y 30.0f
+/* ---- die Eröffnung: schwarz; zwei Fackeln entzünden sich (Pixel-Flammen wie in den DOS-Spielen), darunter
+ * erscheint GARGOYLE in gehauenen Goldbuchstaben ---- */
+#define INTRO_MS 3000u
+#define TITLE_Y 128
+static void pix_torch(int32_t x, int32_t y, float t, float on, int seed)
+{
+    int32_t i, j;
+    int fr = ((int)(t * 12.0f) + seed * 3) % ART_FN;
+    const uint8_t *f = ART_FLAME[fr];
+    float fl = 0.85f + 0.15f * fm_sinf(t * 19.0f + (float)seed);
+    s_bloom((float)x, (float)y + 22.0f, 60.0f, rgb3(255, 120, 30), 0.16f * on * fl);
+    for (j = 0; j < 16; j++)             /* die Fackel: Holz, oben ein Eisenkorb */
+        for (i = -3; i <= 2; i++) {
+            int32_t yy = y + 52 + j * 2;
+            col3 c = j < 3 ? rgb3(70, 66, 70) : rgb3(i < -1 ? 70 : i > 0 ? 46 : 96, i < -1 ? 42 : i > 0 ? 28 : 62, i < -1 ? 22 : i > 0 ? 14 : 30);
+            if (j < 3 && (i == -3 || i == 2))
+                c = rgb3(110, 104, 110);
+            s_rect((float)(x + i * 2), (float)yy, 2.0f, 2.0f, c, 1.0f);
+        }
+    s_rect((float)x - 10.0f, (float)y + 78.0f, 20.0f, 3.0f, rgb3(60, 56, 60), 1.0f);   /* die Halterung an der Wand */
+    for (j = 0; j < ART_FH; j++)         /* die Flamme: 2x2-Pixel, wie damals */
+        for (i = 0; i < ART_FW; i++) {
+            uint8_t v = f[j * ART_FW + i];
+            const uint8_t *c;
+            if (!v)
+                continue;
+            c = ART_FLAME_PAL[v];
+            s_rect((float)(x - ART_FW + i * 2), (float)(y + j * 2), 2.0f, 2.0f,
+                   rgb3((float)c[0], (float)c[1], (float)c[2]), on * (v > 2 ? 1.0f : 0.7f));
+        }
+}
 static void intro_scene(float t, int32_t y0, int32_t h)
 {
-    float txt = sat01((t - 0.25f) / 0.8f), eyes = sat01((t - 1.25f) / 0.3f), fl = 0.0f, sil = 0.0f;
-    int32_t x, y;
+    float on0 = sat01((t - 0.15f) / 0.25f), on1 = sat01((t - 0.45f) / 0.25f), txt = sat01((t - 0.7f) / 0.7f);
+    int32_t x, y, ya, yb;
     g_ox = 0;
     g_x0 = 0;
     g_x1 = 240;
     g_y0 = y0;
     g_y1 = y0 + h;
     cv_oy = -y0;
-    if (t >= 1.85f && t < 1.93f)          /* der Blitz: zweimal */
-        fl = 1.0f;
-    else if (t >= 1.93f && t < 2.0f)
-        fl = 0.15f;
-    else if (t >= 2.0f && t < 2.07f)
-        fl = 0.65f;
-    else if (t >= 2.07f && t < 2.3f)
-        fl = 0.65f * (1.0f - (t - 2.07f) / 0.23f) * 0.4f;
-    if (t >= 1.85f)
-        sil = t < 2.1f ? 1.0f : 0.25f + 0.75f * sat01(1.0f - (t - 2.1f) / 0.7f);
-    for (y = 0; y < h; y++) {             /* der Grund: schwarz, im Blitz ein kaltes Licht von oben */
-        float vy = (float)(y0 + y) / 240.0f;
-        for (x = 0; x < 240; x++) {
-            float vx = ((float)x - 120.0f) / 160.0f, g = fl * (1.0f - 0.55f * vy - 0.4f * vx * vx);
-            cv_px[(uint32_t)y * 240u + (uint32_t)x] = swap16(RGB((int)(g * 230.0f), (int)(g * 232.0f), (int)(g * 255.0f)));
-        }
-    }
-    if (sil > 0.0f) {
-        if (fl > 0.3f)                   /* im Blitz: ein schwarzer Schatten gegen das Licht */
-            gargoyle(120.0f, IN_Y, IN_SC, rgb3(4, 3, 3), 1.0f, rgb3(4, 3, 3), 0.0f);
-        else                             /* danach: der Umriss, schwach im Dunkeln */
-            gargoyle(120.0f, IN_Y, IN_SC, rgb3(10, 8, 7), 1.0f, GOLD_DIM, 0.55f * sil);
-    }
-    garg_eyes(120.0f, IN_Y, IN_SC, eyes, eyes * (0.8f + 0.2f * fm_sinf(t * 9.0f)));
-    if (txt > 0.0f) {
-        uint16_t c = c565(mix3(rgb3(0, 0, 0), GOLD_HI, txt));
-        float dy = 6.0f * (1.0f - txt);
-        s_bloom(120.0f, 166.0f + dy, 80.0f * txt, FIRE, 0.06f * txt);
-        if (txt > 0.5f)
-            cv_text(120 - text_w(&FONT_SERIF_XL, "GARGOYLE") / 2, (int32_t)(152.0f + dy) + 3, &FONT_SERIF_XL, "GARGOYLE",
-                    c565(mix3(rgb3(0, 0, 0), rgb3(90, 18, 10), (txt - 0.5f) * 2.0f)));
-        s_ctext(120.0f, 152.0f + dy, &FONT_SERIF_XL, "GARGOYLE", c, 1);
-        s_ctext(120.0f, 192.0f, &FONT_SERIF_XS, "DRONE SYNTH", c565(mix3(rgb3(0, 0, 0), GOLD, sat01(txt * 1.5f - 0.5f))), 1);
-        s_ctext(120.0f, 208.0f, &FONT_SERIF_XS, "BY SWTDR34MZ",
-                c565(mix3(rgb3(0, 0, 0), GOLD_DIM, sat01(txt * 1.5f - 0.5f))), 1);
+    for (y = 0; y < h; y++)
+        for (x = 0; x < 240; x++)
+            cv_px[(uint32_t)y * 240u + (uint32_t)x] = 0;
+    pix_torch(62, 22, t, on0, 0);
+    pix_torch(178, 22, t + 0.37f, on1, 1);
+    ya = TITLE_Y > g_y0 ? TITLE_Y : g_y0;
+    yb = TITLE_Y + ART_TH < g_y1 ? TITLE_Y + ART_TH : g_y1;
+    if (txt > 0.0f) {                    /* der Name: gehauen, Gold bis Rot, er flackert im Fackellicht */
+        float fl = 0.88f + 0.08f * fm_sinf(t * 19.0f) + 0.06f * fm_sinf(t * 7.0f);
+        int32_t ox = (240 - ART_TW) / 2;
+        for (y = ya; y < yb; y++)
+            for (x = 0; x < ART_TW; x++) {
+                uint32_t k = (uint32_t)(y - TITLE_Y) * ART_TW + (uint32_t)x;
+                uint8_t a = ART_TITLE_A[k];
+                uint16_t c;
+                if (!a)
+                    continue;
+                c = ART_TITLE[k];
+                px_blend(ox + x, y, rgb3((float)(c >> 11) * 8.2f * fl, (float)((c >> 5) & 63u) * 4.05f * fl,
+                                         (float)(c & 31u) * 8.2f * fl), (float)a / 255.0f * txt);
+            }
+        s_ctext(120.0f, (float)TITLE_Y + (float)ART_TH + 10.0f, &FONT_SERIF_XS, "DRONE SYNTH  BY SWTDR34MZ",
+                c565(mix3(rgb3(0, 0, 0), GOLD, sat01(txt * 1.5f - 0.5f))), 1);
     }
     cv_oy = 0;
 }
@@ -1672,6 +1584,8 @@ static void midi_cc(int cc, int v)       /* im Audio-Interrupt */
         set.d[set.algo][D_COLOR] = (uint8_t)v;
     else if (cc >= 70 && cc <= 73)
         set.m[set.algo][cc - 70] = (uint8_t)v;
+    else if (cc == 75)
+        set.wrath = (uint8_t)v;
     else
         return;
     all_params(o);
@@ -1783,7 +1697,7 @@ void app_frame(void)
     if (midi_touched) {
         midi_touched = 0;
         dirty();
-        ui.redraw |= R_ROW0 | R_ROW1 | R_ROW2 | R_ROW3;
+        ui.redraw |= R_ROW0 | R_ROW1 | R_ROW2 | R_ROW3 | R_HEAD | R_READ;
     }
     if (ann_on() && ann_where()) {
         char t[64] = "GARGOYLE. ";
@@ -1798,16 +1712,9 @@ void app_frame(void)
         if (h != ui.hits_seen) {
             ui.hits_seen = h;
             ui.beat_at = now;
-            ui.spike = sat01(0.35f + gr_env() * 2.5f);
         }
-        if (set.grv.on && !(ui.frame % 3u))
+        if (set.grv.on && !(ui.frame % 3u) && (ui.page == PG_GROOVE || ui.page == PG_SETUP || gr_step() >= 0))
             ui.redraw |= R_HEAD;
-        if (!(ui.frame % 2u)) {
-            uint32_t n = (uint32_t)(sizeof ui.ecg / sizeof ui.ecg[0]);
-            ui.ecg[ui.ecg_w % n] = ui.spike;
-            ui.spike *= 0.25f;
-            ui.ecg_w = (ui.ecg_w + 1u) % n;
-        }
     }
     if (ui.vol && !(ui.frame % 3u)) {    /* VOL: die Pegel, in dB (-48 .. 0) */
         int c;
@@ -1819,11 +1726,11 @@ void app_frame(void)
         if (fk_clipped())
             ui.clip_until = now + 600u;
     }
-    if (!(ui.frame % 5u))                /* die Karte lebt: Fackeln, Nebel, Augen, EKG (~12 Bilder pro Sekunde) */
+    if (!(ui.frame % 4u) || now - ui.trans_at < 450u)   /* der Blick lebt: Fackeln, Augen, Glut */
         ui.redraw |= R_MAP;
-    if (ui.plan_until && now >= ui.plan_until) {
-        ui.plan_until = 0;
-        ui.redraw |= R_MAP;
+    if (ui.wrath_until && now >= ui.wrath_until) {
+        ui.wrath_until = 0;
+        ui.redraw |= R_READ;
     }
     {   /* der Akku */
         int lvl = batt_level(), key = lvl < 0 ? -1 : lvl * 1000 + batt_pct(lvl) + (int)((now / 500u) & 1u) * 300;
@@ -1937,6 +1844,8 @@ int app_expect(const char *what, int *got)
         *got = (int)gr_hits() >= atoi(what + 11);
     else if (!strncmp(what, "grv", 3) && what[3] >= '0' && what[3] <= '9')
         *got = set.grv.p[atoi(what + 3) % GR_NP];
+    else if (!strcmp(what, "wrath"))
+        *got = set.wrath;
     else if (!strcmp(what, "scan"))
         *got = set.ss[set.algo][1];
     else if (what[0] == 'p' && what[1] >= '0' && what[1] <= '9') {   /* pN: der Parameter N der Engine (berechnet) */

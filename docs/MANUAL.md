@@ -6,19 +6,20 @@ noises instead of drums.
 
 ## Start
 
-The screen is black, the name GARGOYLE appears, two glowing eyes open above it – a flash, and for a moment you see
-the gargoyle. Any key or button skips the intro. HOLD is on from the start: a key starts the drone and it stays;
+Two torches light up, under them GARGOYLE appears in gold letters on a slab of rock. Any key or button skips the intro. HOLD is on from the start: a key starts the drone and it stays;
 further keys only change the root.
 
 ## The screen
 
-- **Top:** the room's number in the red seal, its name, the algorithm under it. On the right a heart that beats with
-  the GROOVE.
-- **Middle:** the chamber with two torches and the gargoyle. Torches and eyes glow with the sound, the mist is the
-  real signal. FREEZE turns it ice blue. Left and right: the corridors to the neighbouring rooms.
-- **Four rows:** knobs K1–K4, each with a fixed colour on every page: **red** K1, **orange** K2, **green** K3,
-  **blue** K4. The light mark in a bar is the sweetspot.
-- **Bottom:** the readout, HOLD, FREEZE, the octave and the battery as three hearts.
+- **Top left:** the view down the corridor, like the dungeon games of the 90s; Every page has its own corridor and its own
+  monster lurking in the dark, so you always know where you are: PLAY an orc, GROOVE a skeleton, SETUP a slime, DEEP a
+  beholder, FX a crystal ball. WRATH past half brings the dragon in its lava cave, FREEZE the flooded room with the
+  tentacle beast, holding SAVE (snapshots) the treasure room. Torches and eyes glow with the
+  sound, FREEZE turns it ice blue.
+- **Right:** the dome with the room's number (on the GROOVE pages the 16 steps), the page, HOLD, octave, battery.
+- **The four heroes:** knobs K1–K4, each with a fixed colour and weapon on every page: **red** K1, **orange** K2,
+  **green** K3, **blue** K4. The light mark in a bar is the sweetspot.
+- **Bottom:** the message box: the room, and what you are turning.
 
 ## Pages
 
@@ -42,7 +43,7 @@ darker, grainier reverb).
 
 ## Rooms
 
-SELECT or PRESET changes the room; the dungeon plan shows for a moment. Each room keeps its macros, DEEP, SEED and
+PRESET changes the room (the view goes dark for a step). SELECT is WRATH: one macro over everything for live play – the monster at the end of the corridor wakes up; 4 a detent, it stays when you change rooms. Each room keeps its macros, DEEP, SEED and
 SCAN. 1 CRYPT, 2 FORGE, 3 CRYSTAL CAVE, 4 WATCHTOWER, 5 CHAPEL, 6 THRONE HALL, 7 BELFRY, 8 THE WELL, 9 MIST HALL,
 10 THE VOID, 11 ECHO SHAFT, 12 DUNGEON, 13 ROOST, 14 ORACLE, 15 STORM GATE, 16 MASONRY, 17 ABYSS, 18 GREAT HALL,
 19 RUNE VAULT, 20 LABYRINTH, 21 TREASURY, 22 GHOST HALL (the algorithms of FIKH-S in their order).
@@ -62,5 +63,5 @@ start restarts it, stop holds it.
 
 PLAY: HOLD. ARP: FREEZE. GLO: VOL (output levels). SAVE: save (otherwise automatic when quiet). Snapshots: hold SAVE +
 one of the first eight white keys to store the whole sound, hold SEL + the key to recall it. MIDI: notes on any
-channel, pitch bend ±2, CC 1 COLOR, CC 70–73 TONE, MOVE, GRIT, SPACE, clock / start / stop. The battery: three hearts
+channel, pitch bend ±2, CC 1 COLOR, CC 70–73 TONE, MOVE, GRIT, SPACE, CC 75 WRATH, clock / start / stop. The battery: three hearts
 (blinking under 8 %, a bolt on USB). ECO: fewer oscillators when the CPU is short.

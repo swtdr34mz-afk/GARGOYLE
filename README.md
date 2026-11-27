@@ -6,9 +6,9 @@ ambient reverb), but not its menus: the twenty-two algorithms are twenty-two roo
 the same in every room. Plus a **GROOVE** of dungeon noises instead of drums – a heartbeat, footsteps, chains, a
 distant bell – tuned to the drone, with a soft pump that makes the drone breathe.
 
-![GARGOYLE](site/img/screen-main.png) ![GROOVE](site/img/screen-groove.png) ![Intro](site/img/screen-intro.png)
+![GARGOYLE](site/img/screen-main.png) ![WRATH](site/img/screen-wrath.png) ![Intro](site/img/screen-intro.png)
 
-Unofficial fan work: the look is inspired by old fantasy board games; no artwork, logo or name of any game is used.
+The look is inspired by the first-person dungeon games of the early 90s; everything is drawn from code (tools/gen_art.py), no artwork, logo or name of any game is used.
 
 ## Install
 
@@ -26,7 +26,8 @@ Manuals: [Deutsch](docs/HANDBUCH.md), [English](docs/MANUAL.md).
 | HOME 3×: SETUP | LEVEL, HUMAN (randomness), FOLLOW (tuned to the root), TUNE (±12 semitones) |
 | EDIT: DEEP | COLOR, GLIDE, WIDTH, LEVEL |
 | FX | MODE (DREAM, DARK, RISE, LIGHT, RAIN), X (vibrato, octave down, swell, shimmer, diffuse), ECHO, AGE |
-| SELECT / PRESET | the room (1–22); the dungeon plan shows for a moment |
+| SELECT | **WRATH**: one macro over everything, made for live – the monster wakes up (cross modulation, saturation, boiling feedback, metal, more reverb), 4 a detent |
+| PRESET | the room (1–22) |
 | ALGORITHM | SCAN (coarse); on the GROOVE pages: the style |
 | PLAY | HOLD (on from the start): the drone stays, keys only change the root |
 | REC | DICE (held 1 s: deep dice); on the GROOVE pages: GROOVE on / off |
@@ -34,7 +35,7 @@ Manuals: [Deutsch](docs/HANDBUCH.md), [English](docs/MANUAL.md).
 | SEQ (held 1 s) | the room back to its factory sound |
 | GLO | VOL: the output levels in the picture |
 | SAVE / SAVE + key / SEL + key | save; store a snapshot on one of the first eight white keys; recall it |
-| MIDI | notes on any channel, pitch bend ±2, CC 1 COLOR, CC 70–73 TONE, MOVE, GRIT, SPACE; clock, start, stop for the GROOVE |
+| MIDI | notes on any channel, pitch bend ±2, CC 1 COLOR, CC 70–73 TONE, MOVE, GRIT, SPACE, CC 75 WRATH; clock, start, stop for the GROOVE |
 
 Every macro has its **sweetspot** in the middle (the room's factory sound): turning through it, the knob stops there
 for two detents. The macros move 2.5 a detent (7.5 when turned fast), so every detent is heard. Each room keeps its own
