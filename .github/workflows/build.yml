@@ -1,7 +1,9 @@
 # Builds the firmware (.fwsc, installable on an FM-1) on GitHub's machines, which can reach JieLi's toolchain server.
 # Also runs the host simulator's tests (a failing test does not stop the build).
 # Result: Actions tab > the run > "Artifacts" > gargoyle-firmware.
-# On a tag (v0.1, v1.0 ...) the release gets the .fwsc. Every push to main also puts GARGOYLE in the browser
+# Releases: when a push to main carries a VERSION that has no tag yet, this run makes the release v<VERSION> itself
+# (tag, title, text from RELEASE_NOTES.md, the .fwsc attached). So: raise VERSION in a pull request, merge it, done.
+# A tag pushed by hand (v0.1, v1.0 ...) still works too. Every push to main also puts GARGOYLE in the browser
 # (fm1-base's emulator: the same app compiled to WebAssembly) on GitHub Pages: https://swtdr34mz-afk.github.io/GARGOYLE/emu/
 # (the Firmware Hub card's play key, fmhub.json "play"; Settings > Pages > Source: GitHub Actions).
 name: Build firmware
@@ -62,11 +64,24 @@ jobs:
           echo "276579954f076886a6a7694f65dc71c034a63a2c204b76749065c0ac7b010d1b  cpu/wl82/tools/cfg_tool.bin" | sha256sum -c -
           echo "41167491bffed4651750719c973d2758adeb9021a5670d02d6a53c85ed80ea7d  cpu/wl82/tools/cfg/eq_cfg_hw.bin" | sha256sum -c -
 
+      - name: New version? (VERSION on main without its tag yet = release)
+        id: ver
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          V=$(tr -d ' \r\n' < VERSION)
+          if git ls-remote --exit-code --tags origin "refs/tags/v$V" >/dev/null; then
+            echo "v$V is already released"; echo "new=" >> "$GITHUB_OUTPUT"
+          else
+            echo "new release v$V"; echo "new=$V" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Firmware
+        env:
+          NEWVER: ${{ steps.ver.outputs.new }}
         run: |
           export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
           set -o pipefail
-          REL=""; if [ "${GITHUB_REF_TYPE}" = "tag" ]; then REL="--release ${GITHUB_REF_NAME#v}"; fi
+          REL=""; if [ "${GITHUB_REF_TYPE}" = "tag" ]; then REL="--release ${GITHUB_REF_NAME#v}"; elif [ -n "$NEWVER" ]; then REL="--release $NEWVER"; fi
           if ! python3 fm1-base/tools/build.py . $REL 2>&1 | tee build.log; then
             # the log's errors as annotations (readable from the API without signing in)
             grep -nE "error|Error|ERROR|undefined|overflow|exceed|check|fail" build.log | head -60 > errs.txt || true
@@ -95,6 +110,18 @@ jobs:
             build/*.fwsc
             build/firmware.json
 
+      - name: Release of a new VERSION (merged to main, no tag yet)
+        if: steps.ver.outputs.new != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.new }}
+          target_commitish: ${{ github.sha }}
+          name: GARGOYLE v${{ steps.ver.outputs.new }}
+          body_path: RELEASE_NOTES.md
+          files: |
+            build/*.fwsc
+            build/firmware.json
+
   emulator:
     # GARGOYLE in the browser: tools/build.py --web (Emscripten), the page and app.wasm in build/emu
     runs-on: ubuntu-22.04
@@ -117,7 +144,7 @@ jobs:
         run: |
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
           emcc --version | head -1
-          REL=""; if [ "${GITHUB_REF_TYPE}" = "tag" ]; then REL="--release ${GITHUB_REF_NAME#v}"; fi
+          REL=""; if [ "${GITHUB_REF_TYPE}" = "tag" ]; then REL="--release ${GITHUB_REF_NAME#v}"; elif [ -n "$NEWVER" ]; then REL="--release $NEWVER"; fi
           python3 fm1-base/tools/build.py . --web $REL
           mkdir -p _site
           cp -r build/emu _site/emu
