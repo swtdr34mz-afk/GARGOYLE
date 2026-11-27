@@ -290,6 +290,7 @@ static struct {
     uint32_t load_at;
     uint8_t hot;
     uint8_t saving;                      /* 1: leise geblendet, um zu speichern */
+    uint8_t save_wait;                   /* SAVE gedrückt, während es klang: speichern, sobald es still ist */
     uint32_t save_at;
     uint8_t batt_test;
     uint32_t hits_seen, beat_at;         /* GROOVE: der letzte Schlag (die HOME-LED blitzt, das Herz oben) */
@@ -706,8 +707,16 @@ static void held_buttons(uint32_t btn)
 {
     uint32_t now = plat_ms();
     if (!(btn >> B_SAVE & 1u) && (ui.btn >> B_SAVE & 1u)) {   /* SAVE losgelassen */
-        if (!ui.snap_used)
-            save_now();
+        if (!ui.snap_used) {             /* ohne Taste: speichern – aber nie mitten im Klang (das Blenden hört man) */
+            if (fk_level() < 0.0015f && fk_env() < 0.001f) {
+                save_now();
+            } else if (set_dirty) {
+                ui.save_wait = 1;        /* sobald es still ist */
+                app_say("SAVE", "WHEN IT IS QUIET");
+            } else {
+                app_say("SAVE", "ALL SAVED");
+            }
+        }
         ui.redraw |= R_READ;
     }
     if (!(btn >> B_SEL & 1u) && (ui.btn >> B_SEL & 1u)) {
@@ -1742,10 +1751,14 @@ void app_frame(void)
             fk_duck(0);
             ui.saving = 0;
         }
-    } else if (set_dirty && now - dirty_at > 2000u && fk_level() < 0.0015f && fk_env() < 0.001f) {
-        set.magic = SET_MAGIC;
-        if (plat_store_save(OBJ_SETTINGS, &set, sizeof set) == 0)
+    } else if (set_dirty && (ui.save_wait || now - dirty_at > 2000u) && fk_level() < 0.0015f && fk_env() < 0.001f) {
+        set.magic = SET_MAGIC;                   /* still: ohne Blenden, man hört nichts */
+        if (plat_store_save(OBJ_SETTINGS, &set, sizeof set) == 0) {
             set_dirty = 0;
+            if (ui.save_wait)
+                app_say("SAVED", "");
+        }
+        ui.save_wait = 0;
     }
     if (ui.redraw) {
         uint32_t r = ui.redraw;

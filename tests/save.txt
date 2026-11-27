@@ -1,0 +1,23 @@
+# GARGOYLE: SAVE without a key while the drone sounds must not dip the sound; it saves once it is quiet
+wait 4500
+tap PLAY
+key 0 down 100
+wait 100
+key 0 up
+wait 1500
+turn K1 4 150
+wait 300
+expect dirty 1
+wav save_dip.wav
+wait 300
+tap SAVE
+wait 1200
+wavstop
+expect dirty 1
+tap PLAY
+expect hold 0
+wait 5000
+expect dirty 0
+reboot
+wait 4500
+expect set0 66

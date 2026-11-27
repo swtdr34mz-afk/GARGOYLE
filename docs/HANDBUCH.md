@@ -110,7 +110,8 @@ HUMAN, FOLLOW, TUNE. Eine MIDI-Clock übernimmt das Tempo.
 
 ## Weitere Tasten
 
-PLAY: HOLD. ARP: FREEZE (das Echo hält). SAVE: speichern. Snapshots: 27 Stück, auf jeder Taste einer. SAVE halten + eine Taste legt den Klang ab, SEL halten + die Taste holt
+PLAY: HOLD. ARP: FREEZE (das Echo hält). SAVE (ohne Taste): speichern – ist es still, sofort; klingt es noch, sobald es still
+ist (so springt der Klang nie). Alles speichert sich ohnehin von selbst, wenn es still ist. Snapshots: 27 Stück, auf jeder Taste einer. SAVE halten + eine Taste legt den Klang ab, SEL halten + die Taste holt
 ihn zurück; dabei leuchten die belegten Tasten, und unten im Bild zeigt eine kleine Tastatur, welche belegt sind.
 
 ## MIDI
