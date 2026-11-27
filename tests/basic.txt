@@ -5,12 +5,16 @@ wait 700
 shot intro1.png
 wait 1400
 shot intro2.png
-wait 1500
+wait 2300
 expect page 0
 expect algo 0
-expect hold 1
+# silent at the start: HOLD is off
+expect hold 0
+expect note -1
 shot boot.png
-# a key: C4 is key 7 (F3 = key 0); HOLD is on from the start: the drone stays
+# HOLD on (PLAY), then a key: C4 is key 7 (F3 = key 0); the drone stays
+tap PLAY
+expect hold 1
 wav note.wav
 key 7 down 100
 wait 300

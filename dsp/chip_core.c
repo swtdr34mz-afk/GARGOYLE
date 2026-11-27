@@ -289,31 +289,70 @@ static void a_torch(const ctl *k, float *l, float *r, int n)
     }
 }
 
-/* 2 CRYPT CHOIR: vier Stimmen aus 4-Bit-Tabellen (Game Boy); RUNE blendet zwischen den Tabellen (in Stufen),
- * ALCHEMY: die Lage der Stimmen (Einklang, Oktaven, Quinten) */
+/* 2 CRYPT CHOIR: der Game Boy, wie er war: zwei Pulskanäle (Pulsbreite 12,5 / 25 / 50 / 75 %, RUNE), der
+ * Wellenkanal mit 32 Werten zu 4 Bit (QUEST: die Welle) und seiner Lautstärke in drei Stufen (ALCHEMY: Puls / Welle),
+ * die Tonhöhen als 11-Bit-Teiler gerastert (131072 / (2048 - x)); HORDE links: der zweite Puls eine Quinte oder Oktave
+ * tiefer, rechts: um ganze Teiler-Schritte verstimmt (der Chorus der Game-Boy-Musik); CURSE: die Sweep-Einheit des
+ * ersten Kanals (links nach unten, rechts nach oben, sie springt immer wieder zurück). Harte Panoramen wie am
+ * Kopfhörer: Puls 1 links, Puls 2 rechts, die Welle in der Mitte; am Ende der Hochpass des Game Boy. */
+static const uint8_t GB_WAVE[7][32] = {
+    {15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15},
+    {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0},
+    {8, 9, 11, 12, 13, 14, 14, 15, 15, 15, 14, 14, 13, 12, 11, 9, 8, 6, 4, 3, 2, 1, 1, 0, 0, 0, 1, 1, 2, 3, 4, 6},
+    {15, 15, 15, 15, 15, 15, 15, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 0, 0, 0, 0, 0, 0, 0},
+    {15, 15, 15, 15, 15, 15, 15, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    {8, 12, 14, 15, 14, 12, 10, 9, 9, 10, 12, 13, 12, 10, 7, 4, 2, 1, 2, 4, 5, 6, 5, 3, 1, 0, 1, 3, 5, 6, 6, 7},
+};
+static float gb_freq(float f, float clk)   /* auf die 11-Bit-Teiler des Game Boy gerastert */
+{
+    float x = 2048.0f - clk / f;
+    x = (float)(int)(x + 0.5f);
+    x = clampf(x, 0.0f, 2047.0f);
+    return clk / (2048.0f - x);
+}
 static void a_crypt(const ctl *k, float *l, float *r, int n)
 {
-    static const float LAY[3][NV] = {{1.0f, 1.0f, 1.0f, 1.0f}, {1.0f, 0.5f, 2.0f, 1.0f}, {1.0f, 1.5f, 0.75f, 2.0f}};
-    int i, v, lay = k->a < 0.33f ? 0 : k->a < 0.66f ? 1 : 2, t0 = (int)(k->q * 3.99f);
-    float m = k->r * 3.0f;
-    int ta = (int)m;
-    float tf = m - (float)ta;
+    static const float DUTY[4] = {0.125f, 0.25f, 0.5f, 0.75f};
+    int i, wv = (int)(k->q * 7.99f), vs;
+    const uint8_t *tab = wv < 7 ? GB_WAVE[wv] : E.wt[0];
+    float duty = DUTY[(int)(k->r * 3.99f)], wvol, pvol, f1, f2, f3;
+    vs = k->a < 0.25f ? 3 : k->a < 0.5f ? 2 : k->a < 0.75f ? 1 : 0;   /* die Welle: aus, 25, 50, 100 % */
+    wvol = vs == 3 ? 0.0f : vs == 2 ? 0.25f : vs == 1 ? 0.5f : 1.0f;
+    pvol = (float)(15 - (int)(k->a * 8.0f)) / 15.0f;                    /* die Pulse: 4 Bit, leiser je mehr Welle */
+    f1 = k->f * drift_of(0);
+    if (k->h < 0.0f)                      /* eine Quinte, dann eine Oktave tiefer */
+        f2 = f1 * (k->h < -0.5f ? 0.5f : 0.6674f);
+    else
+        f2 = f1;
+    f1 = gb_freq(f1, 131072.0f);
+    f2 = gb_freq(f2, 131072.0f);
+    if (k->h > 0.0f) {                    /* der Game-Boy-Chorus: ganze Teiler-Schritte daneben */
+        float x = 2048.0f - 131072.0f / f2 + (float)(int)(1.0f + k->h * 8.0f);
+        f2 = 131072.0f / (2048.0f - clampf(x, 0.0f, 2047.0f));
+    }
+    f3 = gb_freq(k->f * drift_of(2), 65536.0f);
     for (i = 0; i < n; i++) {
-        float sl = 0.0f, sr = 0.0f;
-        for (v = 0; v < NV; v++) {
-            float f = k->f * LAY[lay][v] * horde_ratio(v, k->h) * drift_of(v), x;
-            int a = (t0 + ta + v) & 3, b = (t0 + ta + v + 1) & 3;
-            adv(&E.ph[v], f);
-            if (k->c != 0.0f && v)           /* CURSE: Stimme 1 verschiebt die Lesestelle der anderen */
-                x = w_wt(E.wt[a], wrap1(E.ph[v] + k->c * 0.5f * w_wt(E.wt[0], E.ph[0])));
-            else
-                x = w_wt(E.wt[a], E.ph[v]);
-            x = x + (w_wt(E.wt[b], E.ph[v]) - x) * (float)((int)(tf * 4.0f)) * 0.25f;   /* 4 Stufen */
-            sl += x * (v & 1 ? 0.35f : 0.65f);
-            sr += x * (v & 1 ? 0.65f : 0.35f);
+        float a, b, c, f1s = f1;
+        if (k->c != 0.0f) {               /* die Sweep-Einheit: in Schritten (128 Hz / Takt), springt zurück */
+            E.arp_ph += (8.0f + k->sp * 1.5f) / FK_SR;
+            if (E.arp_ph >= 1.0f) {
+                E.arp_ph -= 1.0f;
+                E.arp_i = (E.arp_i + 1) % (2 + (int)(absf(k->c) * 6.0f));
+            }
+            f1s = f1 * fm_exp2f((float)E.arp_i * (k->c > 0.0f ? 1.0f : -1.0f) * (0.125f + absf(k->c) * 0.375f));
         }
-        l[i] = sl * 0.22f;
-        r[i] = sr * 0.22f;
+        adv(&E.ph[0], f1s);
+        adv(&E.ph[1], f2);
+        adv(&E.ph[2], f3 * (1.0f / 32.0f) * 32.0f);
+        a = w_pulse(E.ph[0], duty) * pvol;
+        b = w_pulse(E.ph[1], duty == 0.75f ? 0.25f : duty) * pvol;
+        c = ((float)(tab[(int)(E.ph[2] * 32.0f) & 31] >> vs) * (2.0f / 15.0f) - (wvol > 0.0f ? 1.0f * wvol : 0.0f)) * (vs == 3 ? 0.0f : 1.0f);
+        /* der Hochpass des Game Boy (der Kondensator am Ausgang) */
+        E.sh_l += ((a + c) - E.sh_l) * 0.004f;
+        E.sh_r += ((b + c) - E.sh_r) * 0.004f;
+        l[i] = ((a + c) - E.sh_l) * 0.30f;
+        r[i] = ((b + c) - E.sh_r) * 0.30f;
     }
 }
 

@@ -1,5 +1,7 @@
 # GARGOYLE: all 16 algorithms, held as a drone (a screen and a recording of each)
-wait 4000
+wait 4500
+tap PLAY
+expect hold 1
 key 0 down 100
 wait 100
 key 0 up

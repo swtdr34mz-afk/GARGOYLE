@@ -7,8 +7,8 @@ Daraus werden Drones. Kein Hall – stattdessen ein Echo, das in 8 Bit speichert
 
 ## Start
 
-Zwei Fackeln entzünden sich, darunter erscheint GARGOYLE in Goldbuchstaben auf einem Felsbrocken. Eine Taste oder ein
-Knopf überspringt das. HOLD ist von Anfang an an: Eine Taste startet den Drone und er bleibt stehen.
+Das Startbild: GARGOYLE im Gewölbe, die vier Fackeln brennen und ihr Licht flackert über die Wände. Eine Taste oder
+ein Knopf überspringt das. Nach dem Start ist es still (HOLD aus): PLAY schaltet HOLD an, dann bleibt der Drone stehen.
 
 ## Der Bildschirm
 
@@ -54,7 +54,7 @@ Bipolare Regler rasten in der Mitte zwei Rasten lang ein.
 | Nr. | Name | Woher | ALCHEMY |
 |---|---|---|---|
 | 1 | TORCHLIGHT | zwei NES-Pulswellen | wie schnell die Pulsbreite wandert |
-| 2 | CRYPT CHOIR | vier Game-Boy-Wellen | Lage: Einklang, Oktaven, Quinten |
+| 2 | CRYPT CHOIR | der Game Boy: zwei Pulskanäle, der 4-Bit-Wellenkanal, Teiler-Raster, Sweep, Hochpass | Puls / Welle (die Welle in 3 Lautstärken) |
 | 3 | GOBLIN CHORDS | C64-Arpeggio als Akkord | über wie viele Oktaven |
 | 4 | DRAGON BREATH | NES-Rauschen, fast ein Ton | Rauschen / Puls |
 | 5 | PC SPEAKER | 1 Bit, drei Töne im Wechsel | RealSound |

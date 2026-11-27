@@ -301,18 +301,20 @@ def flame_frames(n=8, w=14, h=26):
     return frames, pal
 
 def write_title_and_flames(out):
-    col, al = title_art()
-    th, tw = al.shape
-    px = rgb565(col).ravel()
-    out.append(f"#define ART_TW {tw}\n#define ART_TH {th}")
-    out.append(f"static const uint16_t ART_TITLE[{tw * th}] = {{")
-    for i in range(0, len(px), 24):
-        out.append("  " + ",".join(f"0x{v:04x}" for v in px[i:i + 24]) + ",")
-    out.append("};")
-    a8 = np.clip(np.round(al * 255), 0, 255).astype(np.uint8).ravel()
-    out.append(f"static const uint8_t ART_TITLE_A[{tw * th}] = {{")
-    for i in range(0, len(a8), 40):
-        out.append("  " + ",".join(str(int(v)) for v in a8[i:i + 40]) + ",")
+    # the start screen: Tom's picture (tools/art/splash.png, made with ChatGPT), the whole width, 255 colours
+    sp = Image.open(ROOT / "tools" / "art" / "splash.png").convert("RGB")
+    sw = 240
+    sh_ = int(round(sp.height * sw / sp.width))
+    im = sp.resize((sw, sh_), Image.LANCZOS)
+    q = im.quantize(colors=255, method=Image.MEDIANCUT, dither=Image.NONE)
+    pal = np.array(q.getpalette()[:255 * 3], np.float64).reshape(-1, 3) / 255.0
+    q.convert("RGB").resize((sw * 3, sh_ * 3), Image.NEAREST).save(OUT / "splash.png")
+    out.append(f"#define ART_SW {sw}\n#define ART_SH {sh_}\n#define ART_SSCALE {sw / sp.width:.6f}f")
+    out.append("static const uint16_t ART_SPL_PAL[255] = {" + ",".join(f"0x{v:04x}" for v in rgb565(pal[None, :, :])[0]) + "};")
+    ix = np.asarray(q, np.uint8).ravel()
+    out.append(f"static const uint8_t ART_SPL[{sw * sh_}] = {{")
+    for i in range(0, len(ix), 60):
+        out.append("  " + ",".join(str(int(v)) for v in ix[i:i + 60]) + ",")
     out.append("};")
     frames, pal = flame_frames()
     fh, fw = frames[0].shape
