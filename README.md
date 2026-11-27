@@ -24,7 +24,7 @@ One knob, one parameter (like FIKH-S), six pages:
 | FX | ECHO | ECHO (mix) | HAUNT (feedback, left ping-pong, fully out endless) | DECAY (echoes turn into a fog: duller, washed, grainy at the top) | DEPTH (time) |
 | ENV | RITUAL | TORCH (low / high pass) | PORTAL (±24 semitones) | AWAKEN (attack) | SLUMBER (release) |
 | EDIT | LORE | CREEP (everything glides: pitch up to 12 s, knobs up to 8 s) | WANDER (pitch, timbre, filter, pan and level drift by themselves) | BITS (16 .. 1 bit) | VOLUME |
-| LFO | SPELL | AGE (sample rate down to 2 kHz) | VIBRATO | SPEED (vibrato, arpeggios, patterns) | WIDTH |
+| LFO | SPELL | AGE (sample rate down to 2 kHz) | AURA (a resonator: chip tones ring into a drone) | SPEED (arpeggios, patterns) | WIDTH |
 
 SELECT is **WRATH**, one macro over everything for live play (past half the dragon appears). PRESET picks the
 algorithm, ALGORITHM is QUEST (its variants, coarse), REC is FATE (dice; held 1 s: deep). PLAY: HOLD, ARP: FREEZE (the

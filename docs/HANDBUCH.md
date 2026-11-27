@@ -33,7 +33,7 @@ ein Knopf überspringt das. Nach dem Start ist es still (HOLD aus): PLAY schalte
 | FX | ECHO | ECHO | HAUNT | DECAY | DEPTH |
 | ENV | RITUAL | TORCH | PORTAL | AWAKEN | SLUMBER |
 | EDIT | LORE | CREEP | WANDER | BITS | VOLUME |
-| LFO | SPELL | AGE | VIBRATO | SPEED | WIDTH |
+| LFO | SPELL | AGE | AURA | SPEED | WIDTH |
 
 - **CURSE** (Mitte neutral): Kreuzmodulation – links Ringmodulation, rechts Sync oder FM (je Algorithmus).
 - **HORDE** (Mitte neutral): die Stimmen – links kommen Oktaven darunter dazu, rechts werden sie verstimmt.
@@ -48,7 +48,8 @@ ein Knopf überspringt das. Nach dem Start ist es still (HOLD aus): PLAY schalte
   Bewegungen am Regler zu langsamen Übergängen. **WANDER**: der Klang wandert von selbst – Stimmung der Stimmen
   (bis ±70 Cent), Klangfarbe, Filter (bis 1,5 Oktaven), Panorama und Lautstärke atmen, jeder Weg in seinem eigenen
   langsamen Tempo. **BITS** (16 bis 1 Bit), **VOLUME**.
-- **AGE** (die Abtastrate, bis hinunter auf 2 kHz), **VIBRATO** (in Stufen wie im Tracker), **SPEED** (Vibrato,
+- **AGE** (die Abtastrate, bis hinunter auf 2 kHz), **AURA** (ein Resonator auf Grundton, Quinte und Oktaven: die Chip-Töne klingen nach und werden zu einer
+  schwebenden Fläche – der Schlüssel zum Drone), **SPEED** (
   Arpeggios und Muster, 1–60 Hz – die Bildrate der alten Spiele ist 50/60), **WIDTH**. Die SPELL-Seite gilt für alle
   Algorithmen gleich.
 

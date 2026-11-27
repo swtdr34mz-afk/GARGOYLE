@@ -32,7 +32,7 @@ enum {
     P_CREEP, P_WANDER, P_BITS, P_VOLUME,     /* EDIT */
     P_FATE, P_QUEST,                         /* REC, ALGORITHM */
     FK_NPA,                                  /* bis hier: je Algorithmus; danach für alle gleich */
-    P_AGE = FK_NPA, P_VIBRATO, P_SPEED, P_WIDTH,   /* LFO */
+    P_AGE = FK_NPA, P_AURA, P_SPEED, P_WIDTH,      /* LFO */
     FK_NP
 };
 #define FK_NPG (FK_NP - FK_NPA)
@@ -55,9 +55,12 @@ extern const fk_algo_info FK_ALGOS[FK_NALGO];
 /* der Speicher: das Echo (16 Bit, 0,74 s je Kanal) und seine Diffusoren (der Nebel, der aus Echos Flächen macht) */
 #define FK_EC_N 32768u
 #define FK_DF_N 6400u                        /* acht Allpässe, float */
+#define FK_RS_N 2048u                        /* AURA: je Kammfilter des Resonators (float): bis 21,5 Hz */
+#define FK_NRES 8                            /* vier je Kanal */
 typedef struct {
     int16_t *ec[2];
     float *df;
+    float *res[FK_NRES];
 } fk_mem;
 
 void fk_init(const fk_mem *m);

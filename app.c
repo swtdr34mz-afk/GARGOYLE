@@ -12,7 +12,7 @@
  *   FX         ECHO:   ECHO, HAUNT, DECAY, DEPTH (das 8-Bit-Echo)
  *   ENV        RITUAL: TORCH, PORTAL, AWAKEN, SLUMBER
  *   EDIT       LORE:   CREEP, WANDER, BITS, VOLUME
- *   LFO        SPELL:  AGE, VIBRATO, SPEED, WIDTH (für alle Algorithmen gleich)
+ *   LFO        SPELL:  AGE, AURA (der Resonator: aus Chip-Tönen wird eine Fläche), SPEED, WIDTH (für alle gleich)
  *   SELECT     WRATH: ein Makro über allem, für live, 4 je Raste
  *   PRESET     der Algorithmus (16, in zwei Bänken)
  *   ALGORITHM  QUEST (grob, für live); auf den GROOVE-Seiten: der Style
@@ -35,9 +35,10 @@
 /* ------------------------------------------------------- der Klang-Speicher --- */
 static int16_t mem_ec[2][FK_EC_N] __attribute__((section(".pool")));
 static float mem_df[FK_DF_N] __attribute__((section(".pool")));
+static float mem_res[FK_NRES][FK_RS_N] __attribute__((section(".pool")));
 
 /* ------------------------------------------------------------- Speicher --- */
-#define SET_MAGIC 0x33475247u            /* "GRG3": der 8-Bit-Kern, für Drones abgestimmt */
+#define SET_MAGIC 0x34475247u            /* "GRG4": mit AURA */
 #define NSNAP 8
 typedef struct {
     uint8_t used, algo, oct, rsv;
@@ -170,7 +171,7 @@ static const uint8_t PAGE_IDX[NPAGES][4] = {
     {P_ECHO, P_HAUNT, P_DECAY, P_DEPTH},
     {P_TORCH, P_PORTAL, P_AWAKEN, P_SLUMBER},
     {P_CREEP, P_WANDER, P_BITS, P_VOLUME},
-    {P_AGE, P_VIBRATO, P_SPEED, P_WIDTH},
+    {P_AGE, P_AURA, P_SPEED, P_WIDTH},
 };
 
 static uint8_t *pval(int p) { return p >= FK_NPA ? &set.g[p - FK_NPA] : &set.p[set.algo][p]; }
@@ -1434,6 +1435,8 @@ void app_init(void)
     m.ec[0] = mem_ec[0];
     m.ec[1] = mem_ec[1];
     m.df = mem_df;
+    for (i = 0; i < FK_NRES; i++)
+        m.res[i] = mem_res[i];
     settings_load();
     set.hold = 0;                        /* nach dem Start still: HOLD aus, bis man es will */
     fk_init(&m);

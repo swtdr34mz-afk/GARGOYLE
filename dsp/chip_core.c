@@ -104,6 +104,8 @@ static struct {
     float arp_ph;                             /* die Arpeggios und Muster (SPEED) */
     int arp_i, step_note, last_fate, last_quest;
     float vib_ph, sh_l, sh_r, sh_acc;
+    uint32_t rw;                              /* AURA: der Resonator */
+    float rlp[FK_NRES], rlen[FK_NRES];
     uint32_t rng;
     /* das Filter, das Echo */
     float f_lp[2][2], f_hp[2][2];
@@ -156,6 +158,11 @@ void fk_init(const fk_mem *m)
     fk_zero(E.m.ec[0], FK_EC_N * 2u);
     fk_zero(E.m.ec[1], FK_EC_N * 2u);
     fk_zero(E.m.df, FK_DF_N * 4u);
+    {
+        int j;
+        for (j = 0; j < FK_NRES; j++)
+            fk_zero(E.m.res[j], FK_RS_N * sizeof(float));
+    }
     E.algo_next = -1;
     E.xf = 1.0f;
     E.xf_dir = 1.0f;
@@ -800,7 +807,7 @@ void fk_render(float *l, float *r, int n)
     E.glide = sm < 0.01f ? 1.0f : 1.0f - fm_exp2f(-(float)n / (FK_SR * 0.002f * fm_exp2f(sm * 12.5f)));
     E.pitch += (E.target - E.pitch) * E.glide;
     E.vib_ph = wrap1(E.vib_ph + (2.0f + E.sm[P_SPEED] * 8.0f) * (float)n / FK_SR);
-    vib = E.sm[P_VIBRATO] * E.sm[P_VIBRATO] * 1.2f * (float)((int)(fk_sin(E.vib_ph) * 4.0f)) * 0.25f;
+    vib = 0.0f;                              /* (das Vibrato der Tracker hat BEHOLDER; hier schwebt WANDER) */
     {
         int portal = (int)(B(P_PORTAL) * 24.0f + (B(P_PORTAL) < 0.0f ? -0.5f : 0.5f));
         f0 = mtof(E.pitch + E.bend + vib + (float)portal);
@@ -829,8 +836,8 @@ void fk_render(float *l, float *r, int n)
         }
     }
     {   /* gleich laut: je Algorithmus ein Ausgleich (gemessen) */
-        static const float GAIN[FK_NALGO] = {1.0f, 1.5f, 1.0f, 1.15f, 1.2f, 1.4f, 2.6f, 1.5f,
-                                             1.4f, 1.0f, 1.3f, 1.65f, 1.0f, 0.95f, 0.95f, 1.0f};
+        static const float GAIN[FK_NALGO] = {1.0f, 1.4f, 1.3f, 1.65f, 1.55f, 1.6f, 2.6f, 1.25f,
+                                             1.4f, 1.6f, 2.2f, 1.75f, 1.2f, 1.15f, 1.05f, 1.3f};
         float g = GAIN[E.algo];
         for (i = 0; i < n; i++) {
             gl[i] *= g;
@@ -883,6 +890,50 @@ void fk_render(float *l, float *r, int n)
         E.f_lp[1][1] = fm_flush(E.f_lp[1][1]);
         E.f_hp[0][0] = fm_flush(E.f_hp[0][0]);
         E.f_hp[1][0] = fm_flush(E.f_hp[1][0]);
+    }
+    /* AURA: der Resonator – vier Kammfilter je Kanal auf Grundton, Oktave, Quinte und Duodezime, rechts leicht
+     * verstimmt; die Chip-Töne regen sie an und sie klingen lange nach: aus Piepsen wird eine schwebende Fläche, die
+     * Rückkopplung ist weich begrenzt. So werden die 8-Bit-Klänge zu Drones. */
+    {
+        static const float RAT[FK_NRES] = {1.0f, 2.0f, 1.5f, 3.0f, 1.0035f, 2.004f, 0.75f, 4.0f};
+        float au = E.sm[P_AURA];
+        int j;
+        if (au > 0.005f || E.rlp[0] != 0.0f || E.rlp[4] != 0.0f) {
+            float fb = 0.90f + 0.0985f * fm_sqrtf(au), damp = 0.30f + 0.25f * E.sm[P_DECAY], wet = au,
+                  dry = 1.0f - 0.7f * au;
+            float base = mtof(E.pitch + (float)(int)(B(P_PORTAL) * 24.0f));
+            for (j = 0; j < FK_NRES; j++) {
+                float len = FK_SR / clampf(base * RAT[j], 22.0f, 8000.0f);
+                while (len > (float)FK_RS_N - 4.0f)
+                    len *= 0.5f;          /* zu tief: eine Oktave höher */
+                E.rlen[j] = E.rlen[j] <= 0.0f ? len : E.rlen[j] + (len - E.rlen[j]) * 0.05f;
+            }
+            for (i = 0; i < n; i++) {
+                float ol = 0.0f, orr = 0.0f, in_l = gl[i] * 0.22f, in_r = gr[i] * 0.22f;
+                for (j = 0; j < FK_NRES; j++) {
+                    float *b = E.m.res[j], rp = (float)E.rw - E.rlen[j], fr, y, x;
+                    uint32_t ri;
+                    if (rp < 0.0f)
+                        rp += (float)FK_RS_N;
+                    ri = (uint32_t)rp;
+                    fr = rp - (float)ri;
+                    y = b[ri & (FK_RS_N - 1u)] + (b[(ri + 1u) & (FK_RS_N - 1u)] - b[ri & (FK_RS_N - 1u)]) * fr;
+                    E.rlp[j] += (y - E.rlp[j]) * (1.0f - damp);
+                    x = (j < 4 ? in_l : in_r) + E.rlp[j] * fb;
+                    x = x / (1.0f + absf(x) * 0.25f);
+                    b[E.rw & (FK_RS_N - 1u)] = absf(x) < 1e-12f ? 0.0f : x;   /* (keine Denormalen: sie sind langsam) */
+                    if (j < 4)
+                        ol += y;
+                    else
+                        orr += y;
+                }
+                E.rw = (E.rw + 1u) & (FK_RS_N - 1u);
+                gl[i] = gl[i] * dry + ol * wet * 0.35f;
+                gr[i] = gr[i] * dry + orr * wet * 0.35f;
+            }
+            for (j = 0; j < FK_NRES; j++)
+                E.rlp[j] = fm_flush(E.rlp[j]);
+        }
     }
     /* AGE: halten */
     {

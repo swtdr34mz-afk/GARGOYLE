@@ -8,11 +8,11 @@ const fk_param_info FK_PARAMS[FK_NP] = {
     {"TORCH", 1}, {"PORTAL", 1}, {"AWAKEN", 0}, {"SLUMBER", 0},
     {"CREEP", 0}, {"WANDER", 0}, {"BITS", 0}, {"VOLUME", 0},
     {"FATE", 0}, {"QUEST", 0},
-    {"AGE", 0}, {"VIBRATO", 0}, {"SPEED", 0}, {"WIDTH", 0},
+    {"AGE", 0}, {"AURA", 0}, {"SPEED", 0}, {"WIDTH", 0},
 };
 
-/* AGE, VIBRATO, SPEED, WIDTH: wie sie anfangen */
-const uint8_t FK_GLOBAL_INIT[FK_NPG] = {10, 14, 50, 96};
+/* AGE, AURA, SPEED, WIDTH: wie sie anfangen (AURA an: ein Drone von Anfang an) */
+const uint8_t FK_GLOBAL_INIT[FK_NPG] = {10, 64, 50, 96};
 
 /*                                                CURSE HORDE RUNE ALCH  ECHO HAUNT DECAY DEPTH  TORCH PORTAL AWAKEN SLUMB  CREEP WANDER BITS VOL  FATE QUEST */
 const fk_algo_info FK_ALGOS[FK_NALGO] = {
