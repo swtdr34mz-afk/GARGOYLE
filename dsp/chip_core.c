@@ -2,7 +2,6 @@
  * Copyright (C) 2026 swtdr34mz (GARGOYLE) */
 /* GARGOYLE – der Klangkern (siehe chip_core.h). Eine Übersetzungseinheit: der GROOVE (garg_groove.c) ist am Ende
  * eingebunden. Alle Klänge hier synthetisiert, nach den Prinzipien der alten Chips (keine Kopie eines Chips). */
-#include <string.h>
 #include "chip_core.h"
 #include "fastmath.h"
 
@@ -25,7 +24,12 @@ static inline float fk_sin(float ph)          /* sin(2 pi ph), eine Näherung (P
     float x = wrap1(ph + 0.5f) * 2.0f - 1.0f, y = 4.0f * x * (1.0f - absf(x));
     return -(y + 0.225f * y * (absf(y) - 1.0f));
 }
-static void fk_zero(void *d, uint32_t n) { memset(d, 0, n); }
+static void fk_zero(void *d, uint32_t n)       /* (kein libc in dieser Übersetzungseinheit) */
+{
+    uint8_t *p = (uint8_t *)d;
+    while (n--)
+        *p++ = 0;
+}
 
 /* ---- die Bausteine der alten Chips ---- */
 static inline float w_pulse(float ph, float duty) { return ph < duty ? 1.0f : -1.0f; }
@@ -167,7 +171,12 @@ void fk_algo(int a)
     E.algo_next = a;
     E.xf_dir = -1.0f;
 }
-void fk_params(const uint8_t p[FK_NP]) { memcpy(E.raw, p, FK_NP); }
+void fk_params(const uint8_t p[FK_NP])
+{
+    int i;
+    for (i = 0; i < FK_NP; i++)
+        E.raw[i] = p[i];
+}
 
 static void gate_on(void)
 {
