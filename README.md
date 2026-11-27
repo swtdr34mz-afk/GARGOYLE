@@ -29,7 +29,7 @@ One knob, one parameter (like FIKH-S), six pages:
 
 SELECT is **WRATH**, one macro over everything for live play (past half the dragon appears). PRESET picks the
 algorithm, ALGORITHM is QUEST, a MORPH into the next algorithm, REC is FATE (dice, also the variants; held 1 s: deep). PLAY: HOLD, ARP: FREEZE (the
-echo holds), SEQ held: factory sound, SAVE + key / SEL + key: 8 snapshots. MIDI: notes, pitch bend,
+echo holds), SEQ held: factory sound, SAVE + key / SEL + key: 27 snapshots, one on every key. MIDI: notes, pitch bend,
 CC 1 RUNE, CC 70–73 CURSE HORDE RUNE ALCHEMY, CC 75 WRATH, clock / start / stop for the GROOVE.
 
 **The 16 algorithms:** TORCHLIGHT (NES pulse pair), CRYPT CHOIR (Game Boy: two pulse channels, the 4-bit wave channel, sweep), GOBLIN CHORDS (C64 arpeggio),
