@@ -1,10 +1,8 @@
-**GARGOYLE v0.1.3**
+**GARGOYLE v0.1.4**
 
-- OMEN now moves only the sound, never the stereo field: no more panning on any PATH
-- OMEN has its own low pass after AURA, so BREATH, FLAME and the others open and close the sound clearly instead of only at the very top
-- TIDE is replaced by **RUNE**: wave, pulse width, table and ALCHEMY wander (PWM and friends)
-- HAUNT: a real vibrato (up to ±60 cents), a little darker in the dip
-- CURSE stays as it was (the jumps like an arpeggio)
-- BITS fixed: at very few bits quiet sounds no longer vanish into silence, they crunch like a fully driven 8-bit converter
+- **four LFOs**: press LFO again and again for OMEN I, II, III, IV – each with its own RATE, SHAPE, POWER and PATH, free or locked to the GROOVE
+- several LFOs on the same target add up (e.g. a slow BREATH over 4 bars plus a fast FLAME in 1/16)
+- new PATH **MORPH**: the LFO pushes the sound into the next algorithm and back
+- every OMEN has its own colour (violet, green, amber, blue); its number glows in the dome with its LFO
 
-Install: download the .fwsc below and flash it with the M-Flasher. Your sounds and snapshots stay.
+Install: download the .fwsc below and flash it with the M-Flasher. Your sounds and snapshots stay; your LFO becomes OMEN I, the other three start switched off.

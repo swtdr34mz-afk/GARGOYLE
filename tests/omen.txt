@@ -25,16 +25,16 @@ wavstop
 # PATH: one step per detent: FLAME, ... STORM
 turn K4 1
 wait 100
-expect p25 24
+expect p25 21
 wav o_flame.wav
 wait 3000
 wavstop
 turn K4 5
 wait 100
-expect p25 104
+expect p25 92
 turn K4 1
 wait 100
-expect p25 120
+expect p25 106
 wav o_storm.wav
 wait 3000
 wavstop
@@ -56,6 +56,27 @@ wav o_sync.wav
 wait 4000
 wavstop
 shot omen_sync.png
+# OMEN II..IV: LFO steps through them, then back to I
+tap LFO
+expect page 8
+shot omen2.png
+tap LFO
+expect page 9
+tap LFO
+expect page 10
+expect p37 120
+# OMEN IV on MORPH: slow, strong
+turn K3 60 30
+wait 300
+turn K4 1
+wait 100
+expect p37 120
+wav o_morph.wav
+wait 6000
+wavstop
+shot omen4.png
+tap LFO
+expect page 7
 # SPELL on GLO
 tap GLO
 expect page 6
