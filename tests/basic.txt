@@ -52,17 +52,27 @@ expect mac3 127
 expect p19 127
 turn K4 -30 60
 turn K4 -3 120
-# the rooms: SELECT moves through them, the plan shows
-turn SELECT 3
+# the rooms: PRESET moves through them (a step: the view goes dark and back)
+turn PRESET 3
 expect algo 3
 wait 100
-shot plan.png
+shot step.png
 wait 2000
 shot room4.png
-turn SELECT -4
+turn PRESET -4
 expect algo 21
 turn PRESET 1
 expect algo 0
+# WRATH on SELECT: 4 a detent, over everything
+turn SELECT 5 120
+expect wrath 20
+wait 100
+turn SELECT 30 60
+expect wrath 127
+wait 300
+shot wrath.png
+turn SELECT -40 60
+expect wrath 0
 # the pages
 tap HOME
 expect page 1
@@ -126,6 +136,10 @@ expect deep0 64
 midi B0 47 10
 wait 50
 expect mac1 16
+midi B0 4B 40
+wait 50
+expect wrath 64
+midi B0 4B 00
 midi 80 3C 00
 # saved and back after a reboot
 tap SAVE
